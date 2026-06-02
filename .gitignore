@@ -7,8 +7,14 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
+# Generated reports (JSON source + PDF)
+report/
+
 # OS / editor
 .DS_Store
 *.log
 .env
 .vscode/
+
+# Local Claude Code state
+.claude/

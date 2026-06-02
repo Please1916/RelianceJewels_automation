@@ -8,7 +8,10 @@
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "codegen": "playwright codegen https://reliancejewels.snghostz5.de/",
-    "diagram": "node docs/render-diagram.js"
+    "diagram": "node docs/render-diagram.js",
+    "report": "playwright show-report",
+    "report:pdf": "node scripts/generate-report-pdf.mjs",
+    "test:report": "playwright test plp-p0 clp-p0 search-p0; node scripts/generate-report-pdf.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0"

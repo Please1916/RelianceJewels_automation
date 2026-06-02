@@ -1,71 +1,94 @@
-# PLP P0 Test Automation
+# PLP / CLP / Search P0 Test Automation
 
-Automates the **21 PLP P0** cases from the test-case sheet against the live
-storefront (`https://reliancejewels.snghostz5.de/products`).
+Automates the **P0** cases from the test-case sheet against the live storefront
+(`https://reliancejewels.snghostz5.de`). No login is required.
 
-- **18 functional cases** are automated in [`tests/plp-p0.spec.js`](../tests/plp-p0.spec.js)
-  using the [`PlpPage`](../pages/PlpPage.js) page object.
-- **3 performance cases** (PLP-064 desktop load, PLP-065 mobile load,
-  PLP-066 Core Web Vitals) are **deferred** to a separate Lighthouse-based task —
-  they need true CWV / P75 tooling, not functional Playwright assertions.
+| Suite | Spec | Page object | Automated | Notes |
+|-------|------|-------------|-----------|-------|
+| PLP    | [`tests/plp-p0.spec.js`](../tests/plp-p0.spec.js) | [`PlpPage`](../pages/PlpPage.js) | 18 (TC_01–TC_18) | 3 perf cases deferred |
+| CLP    | [`tests/clp-p0.spec.js`](../tests/clp-p0.spec.js) | [`ClpPage`](../pages/ClpPage.js) | 9 (TC_19–TC_27) | 1 perf case deferred |
+| Search | [`tests/search-p0.spec.js`](../tests/search-p0.spec.js) | [`SearchPage`](../pages/SearchPage.js) | 11 (TC_28–TC_38) | — |
+
+Performance cases (PLP-064/065/066, CLP-028) are **deferred** to a separate
+Lighthouse task — they need true CWV / P75 tooling, not functional assertions.
 
 ## Running
 
 ```bash
-npm test -- plp-p0                 # run the PLP P0 suite (headless)
-npm run test:headed -- plp-p0      # watch it run
-npx playwright show-report         # open the HTML report
+npm test                       # run everything (headless)
+npx playwright test plp-p0     # one suite
+npx playwright test -g TC_24   # one case by ID
+npm run test:report            # run all P0 + regenerate the PDF report
+npm run report:pdf             # rebuild the PDF from the last run
+npm run report                 # open the interactive HTML report
 ```
 
-No login is required for any PLP P0 case. The suite runs against live data
-(catalog of ~23 products), so it includes one retry to absorb transient
+Tests run against live data, so the config uses one retry to absorb transient
 network/animation blips.
 
-## Case → test mapping
+## Status legend
 
-| TC | Status | Notes |
-|----|--------|-------|
-| PLP-001 | ✅ pass | Header/nav items equal Home; logo + search present |
-| PLP-010 | ✅ pass | 7 filter tabs visible & on one row |
-| PLP-011 | ✅ pass | Clicking Category reveals value links |
-| PLP-012 | ✅ pass | Multi-select → `?category=rings&category=studs` |
-| PLP-013 | ✅ pass | Combine Category + Metal Purity (dynamic value) |
-| PLP-014 | ✅ pass | Sentinel proves client-side update (no reload) |
-| PLP-018 | ✅ pass | Sort widget visible |
-| **PLP-019** | ❌ **FAIL (defect)** | Spec sort options don't match live — see BUG-2 |
-| **PLP-020** | ❌ **FAIL (defect)** | Default sort is "Popularity", not "Relevance" — see BUG-1 |
-| PLP-021 | ✅ pass | Price Low→High ascending |
-| PLP-022 | ✅ pass | Price High→Low descending |
-| PLP-025 | ✅ pass | Multi-column grid layout |
-| PLP-026 | ✅ pass | Card image present with src |
-| PLP-028 | ✅ pass | Name shown, truncated ≤ 2 lines |
-| PLP-029 | ✅ pass | ₹ price present & parseable |
-| PLP-030 | ✅ pass | Same product + overlapping price band — see BUG-3 (watch) |
-| PLP-035 | ✅ pass | Card opens PDP (in a new tab) |
-| PLP-063 | ✅ pass | Scrolling loads more (12 → more, of 23) |
-| PLP-064/065/066 | ⏳ deferred | Performance — Lighthouse task |
+- ✅ pass — asserts live behaviour and passes.
+- 🟠 known defect / finding — intentionally non-passing; flags a product gap
+  (tagged `[KNOWN DEFECT]` / `[FINDING]` and bucketed separately in the report).
+- ⏳ deferred — performance, handled by the Lighthouse task.
 
-The two failing tests are **intentional**: they assert the documented spec and
-fail because the live site diverges, surfacing the defects below.
+## CLP mapping (TC_19–TC_27)
 
-## Defects found (file these as bugs)
+| TC | Case | Status | Notes |
+|----|------|--------|-------|
+| TC_19 | CLP-001 | ✅ | Header/nav matches Home |
+| TC_20 | CLP-007 | ✅ | Card hides name by default (image+tag) |
+| TC_21 | CLP-008 | 🟠 known defect | Hover detail panel "Discover More" not implemented |
+| TC_22 | CLP-009 | 🟠 known defect | Hover panel fields/CTA not implemented |
+| TC_23 | CLP-011 | 🟠 known defect | "Discover More" CTA → PDP not implemented |
+| TC_24 | CLP-012 | ✅ | Card click → PDP (new tab) |
+| TC_25 | CLP-014 | ✅ | Filters work like PLP (no reload) |
+| TC_26 | CLP-015 | ✅ | Sort Price Low→High ascending |
+| TC_27 | CLP-026 | ✅ | Infinite scroll loads more |
+| — | CLP-028 | ⏳ deferred | Page load < 3s (Lighthouse) |
+
+## Search mapping (TC_28–TC_38)
+
+| TC | Case | Status | Notes |
+|----|------|--------|-------|
+| TC_28 | SRC-001 | ✅ | Search bar on Home/PLP/PDP |
+| TC_29 | SRC-002 | ✅ | Search bar on PDP & Cart |
+| TC_30 | SRC-003 | ✅ | Search by product name |
+| TC_31 | SRC-004 | 🟠 finding | SKU (derived id) returns no results — see BUG-SRC-1 |
+| TC_32 | SRC-005 | 🟠 finding | RRL (derived code) returns no results — see BUG-SRC-1 |
+| TC_33 | SRC-006 | ✅ | Search by category name |
+| TC_34 | SRC-007 | ✅ | Type-ahead after 2 chars |
+| TC_35 | SRC-008 | ✅ | Suggestions show products + categories |
+| TC_36 | SRC-011 | ✅ | Clicking a suggestion navigates |
+| TC_37 | SRC-012 | ✅ | Results use PLP layout |
+| TC_38 | SRC-015 | ✅ | 0 products for nonsense query (see BUG-SRC-2) |
+
+## Defects / findings (file these as bugs)
 
 ### BUG-1 (PLP-020) — Default PLP sort is "Popularity", spec says "Relevance"
-- **Steps:** Open `/products` → read the "Sort By:" value.
-- **Expected:** Default sort = **Relevance**.
-- **Actual:** Default sort = **Popularity**. ("Relevance" is not an option at all.)
-- **Severity:** Medium (P0 spec deviation; affects default result ordering).
+Default sort on `/products` is **Popularity**; "Relevance" isn't even an option.
 
 ### BUG-2 (PLP-019) — Sort options don't match the spec
-- **Steps:** Open `/products` → open the Sort dropdown.
-- **Expected options:** Relevance, New Arrival, Popularity, Ratings, Price Low to High, Price High to Low.
-- **Actual options:** Latest Products, Popularity, Price Low to High, Price High to Low, Discount Low to High, Discount High to Low.
-- **Diff:** Missing **Relevance**, **Ratings**; "New Arrival" appears to be renamed **"Latest Products"**; extra **Discount Low→High / High→Low**.
-- **Severity:** Medium (P0 spec deviation; confirm with PM whether spec or build is the source of truth).
+Actual: Latest Products, Popularity, Price L→H, Price H→L, Discount L→H, Discount H→L.
+Missing **Relevance** & **Ratings**; "New Arrival" appears renamed to **"Latest Products"**; extra **Discount** sorts.
 
 ### BUG-3 (PLP-030) — Intermittent PLP↔PDP price discrepancy [WATCH]
-- **Steps:** On `/products`, note card 0's price → open its PDP → compare the marked price.
-- **Observed:** Same product, **upper bound matches** (e.g. ₹2,37,642.44) but the **lower bound differs** between PLP and PDP (e.g. PLP ₹58,958 vs PDP ₹1,00,000), and it fluctuates between page loads.
-- **Likely cause:** Variant prices recomputed from live metal rates per page load.
-- **Goal G2 says 0% discrepancy**, so confirm with the team whether this drift is acceptable. The automated test logs the exact mismatch (`[PLP-030 finding]`) when texts differ.
-- **Severity:** Needs triage (could be expected dynamic pricing, or a real consistency bug).
+Same product: upper price matches, lower price differs and fluctuates between
+loads (likely live metal-rate recomputation). G2 expects 0% discrepancy — confirm with the team.
+
+### BUG-CLP-1 (CLP-008/009/011) — Collection hover-card design not implemented
+PRD specifies a slide-in detail panel with a **"Discover More"** CTA on collection
+cards. On staging, collections reuse the standard PLP card (name hidden by default
+per CLP-007, but no hover panel / "Discover More" CTA). TC_21/22/23 assert the PRD
+and fail to flag this.
+
+### BUG-SRC-1 (SRC-004/005) — Search does not match SKU / RRL identifiers
+Searching a product's numeric id or slug code returns **no results** — search
+appears to be name/category based only. Provide a real SKU + RRL code to confirm,
+or treat as a search-capability gap. TC_31/32 are tagged `[FINDING]`.
+
+### BUG-SRC-2 (SRC-015) — No friendly "No results found" message
+An invalid query (`?q=xyzabc123zzq`) returns **0 products with no detectable
+"No results" message**. TC_38 passes on the 0-results assertion and logs
+`[SRC-015 finding]`. Confirm an empty-state message is expected.
