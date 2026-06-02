@@ -1,0 +1,16 @@
+{
+  "name": "jewels-playwright",
+  "version": "1.0.0",
+  "description": "Playwright tests for Reliance Jewels",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "codegen": "playwright codegen https://reliancejewels.snghostz5.de/",
+    "diagram": "node docs/render-diagram.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}
