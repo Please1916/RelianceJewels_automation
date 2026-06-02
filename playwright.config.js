@@ -7,10 +7,14 @@ export default defineConfig({
   fullyParallel: true,
   // Live-site E2E: one retry absorbs transient network/animation blips.
   retries: 1,
-  reporter: 'html',
+  reporter: [
+    ['list'],
+    ['html', { open: 'never', outputFolder: 'playwright-report' }],
+    ['json', { outputFile: 'report/results.json' }],
+  ],
   use: {
     baseURL: 'https://reliancejewels.snghostz5.de',
-    headless: false,
+    headless: true,
     viewport: { width: 1280, height: 800 },
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',

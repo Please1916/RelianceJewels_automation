@@ -19,10 +19,17 @@ export const FILTER_TABS = [
   'Category', 'Price', 'Discount', 'Metal Purity', 'Product Size', 'Metal Color', 'Tags',
 ];
 
-// Sort options per the PRD/spec (PLP-019). NOTE: live site differs — see tests.
+// Sort options per the PRD/spec (PLP-019). NOTE: live site differs — see BUG-2.
 export const SPEC_SORT_OPTIONS = [
   'Relevance', 'New Arrival', 'Popularity', 'Ratings',
   'Price Low to High', 'Price High to Low',
+];
+
+// Sort options the live storefront actually offers (used for the presence check).
+export const LIVE_SORT_OPTIONS = [
+  'Popularity', 'Latest Products',
+  'Price Low to High', 'Price High to Low',
+  'Discount Low to High', 'Discount High to Low',
 ];
 
 export class PlpPage {
