@@ -1,11 +1,23 @@
 import { test as base, expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Custom Playwright fixtures for the Reliance Jewels (Fynd/FDK) storefront.
  *
- * Auth here is server-side (httpOnly session cookie) and the SPA re-checks
- * `/session` on every page. There is no real cookie to reuse, so we keep the
- * stubs live for the whole test via fixtures:
+ * REUSABLE REAL SESSION (preferred — no repeated OTPs)
+ *   Auth is a server-side httpOnly session cookie. Instead of logging in per
+ *   test (which fires a real OTP each time), log in ONCE via `npm run auth:login`
+ *   — that saves the real cookies/localStorage to playwright/.auth/user.json.
+ *   Tests then reuse it through the `authedPage` fixture with NO further OTPs,
+ *   until the saved session expires (re-run `npm run auth:login` to re-mint).
+ *
+ *   - `authedPage` : a page restored from the saved real session (storageState).
+ *
+ * STUBBED AUTH (for the dedicated login test cases only)
+ *   Used where the login flow itself is under test. Fakes the verify + session
+ *   responses so no real account state is needed:
  *
  *   - `stubbedAuth`  : installs the OTP-verify + session route stubs on a page.
  *   - `loginViaOtp(page)` : drives the real login UI and enters the OTP.
@@ -20,6 +32,13 @@ import { test as base, expect } from '@playwright/test';
 export const BASE_URL = 'https://reliancejewels.snghostz5.de';
 export const MOBILE_NUMBER = '8151008630';
 export const OTP = '5401';
+
+// Saved real session minted by `npm run auth:login`.
+export const AUTH_FILE = path.join(
+  path.dirname(path.dirname(fileURLToPath(import.meta.url))),
+  'playwright', '.auth', 'user.json'
+);
+export const hasSavedSession = () => fs.existsSync(AUTH_FILE);
 
 // A minimal Fynd user object the SPA can render as "logged in".
 export const FAKE_USER = {
@@ -107,6 +126,24 @@ export const test = base.extend({
     await installAuthStubs(page);
     await loginViaOtp(page);
     await use(page);
+  },
+
+  // A page restored from the saved REAL session — no OTP, reused across tests.
+  // Requires a one-time `npm run auth:login`; re-run when the session expires.
+  authedPage: async ({ browser }, use) => {
+    if (!hasSavedSession()) {
+      throw new Error(
+        `No saved session at ${AUTH_FILE}.\n` +
+        `Run it once (enters ONE real OTP):  npm run auth:login`
+      );
+    }
+    const context = await browser.newContext({
+      storageState: AUTH_FILE,
+      ignoreHTTPSErrors: true,
+    });
+    const page = await context.newPage();
+    await use(page);
+    await context.close();
   },
 });
 

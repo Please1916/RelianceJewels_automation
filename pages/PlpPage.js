@@ -39,6 +39,12 @@ export class PlpPage {
     this.resetAll = page.getByText('Reset All').first();
     this.searchBox = page.getByRole('textbox', { name: /search/i });
     this.logo = page.getByRole('link', { name: /brand logo/i });
+    // Persistent sticky site header (holds the search box + category nav).
+    this.header = page.locator('.ct-header-wrapper').first();
+    // Breadcrumb trail: "Home | Products (N)". Only "Home" is an anchor.
+    this.breadcrumb = page.locator('.breadcrumbs').first();
+    // Selected-filter chips area (each chip = .option-button-active + an ✕ svg).
+    this.appliedFilters = page.locator('.applied-filters').first();
   }
 
   async goto() {
@@ -47,10 +53,56 @@ export class PlpPage {
   }
 
   // ---------- Product count ----------
+  // The result count lives in the breadcrumb's last segment: it reads
+  // "Products (N)" unfiltered and "<Category> (N)" once a category filter is
+  // applied — so we take the LAST "(N)" in the breadcrumb text.
   async productCount() {
-    const el = this.page.getByText(/Products\s*\(\d+\)/i).first();
-    const m = (await el.innerText()).match(/\((\d+)\)/);
-    return m ? Number(m[1]) : null;
+    await this.breadcrumb.waitFor({ state: 'visible', timeout: 15_000 });
+    const matches = (await this.breadcrumb.innerText()).match(/\((\d+)\)/g);
+    if (!matches || !matches.length) return null;
+    return Number(matches[matches.length - 1].replace(/\D/g, ''));
+  }
+
+  // ---------- Breadcrumb (PLP-007 / PLP-008) ----------
+  breadcrumbHome() {
+    return this.breadcrumb.getByRole('link', { name: 'Home', exact: true });
+  }
+  async breadcrumbText() {
+    return (await this.breadcrumb.innerText()).replace(/\s+/g, ' ').trim();
+  }
+
+  // ---------- Selected-filter chips (PLP-016 / PLP-017) ----------
+  chip(label) {
+    return this.appliedFilters.locator('.option-button-active', { hasText: label }).first();
+  }
+  async chipLabels() {
+    const txt = await this.appliedFilters.locator('.option-button-active span').allInnerTexts();
+    return txt.map((s) => s.trim()).filter(Boolean);
+  }
+  /** Remove one chip by clicking its ✕ icon, then wait for the grid to settle. */
+  async removeChip(label) {
+    await this.chip(label).locator('svg').first().click({ force: true });
+    await this.waitForGridSettle();
+  }
+
+  // ---------- Card sub-elements ----------
+  cardWishlist(i = 0) {
+    return this.card(i).locator('.wishlist-container');
+  }
+  cardQuickView(i = 0) {
+    return this.card(i).locator('.quick-view-btn');
+  }
+  cardTag(i = 0) {
+    return this.card(i).locator('.product-tag-text');
+  }
+  cardSubtitle(i = 0) {
+    return this.card(i).locator('.product-subTitle');
+  }
+  cardStrikePrice(i = 0) {
+    return this.card(i).locator('.product-price-strike');
+  }
+  cardDiscount(i = 0) {
+    return this.card(i).locator('.product-price-discount');
   }
 
   // ---------- Cards ----------
@@ -81,12 +133,33 @@ export class PlpPage {
 
   /** Open the first product card (opens in a new tab) and return the popup Page. */
   async openFirstCardInNewTab() {
+    return this.openCardInNewTab(this.card(0));
+  }
+
+  /**
+   * Open a product card in a new tab and return the popup Page. Pass a card
+   * locator; defaults to one that is currently within the viewport so the
+   * click does not auto-scroll the page (preserving scroll position).
+   */
+  async openCardInNewTab(target) {
+    const card = target ?? (await this.firstVisibleCard());
     const [popup] = await Promise.all([
       this.page.context().waitForEvent('page'),
-      this.card(0).click(),
+      card.click(),
     ]);
     await popup.waitForLoadState('domcontentloaded');
     return popup;
+  }
+
+  /** The first product card whose box is currently inside the viewport. */
+  async firstVisibleCard() {
+    const h = this.page.viewportSize()?.height ?? 800;
+    const n = await this.cardCount();
+    for (let i = 0; i < n; i++) {
+      const box = await this.card(i).boundingBox();
+      if (box && box.y >= 0 && box.y < h) return this.card(i);
+    }
+    return this.card(0);
   }
 
   // ---------- Header / category nav (PLP-001) ----------
