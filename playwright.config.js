@@ -5,6 +5,11 @@ export default defineConfig({
   timeout: 60 * 1000,
   expect: { timeout: 10 * 1000 },
   fullyParallel: true,
+  // Cap concurrency: every test opens PLP→popup PDP tabs (scan loops open
+  // several), so the default worker count floods staging + local Chromium and
+  // causes timeouts. 2 workers keeps the live suite stable; raise if staging
+  // can take it. Override per-run with `--workers=N`.
+  workers: 2,
   // Live-site E2E: one retry absorbs transient network/animation blips.
   retries: 1,
   reporter: [

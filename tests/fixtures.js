@@ -75,6 +75,34 @@ async function installAuthStubs(page) {
 }
 
 /**
+ * Context-level variant of installAuthStubs — routes are installed on the whole
+ * browser context so they also apply to popup tabs (the PDP opens in a new tab
+ * via target=_blank, which page-level routes would miss).
+ */
+async function installAuthStubsContext(context) {
+  const state = { loggedIn: false };
+
+  await context.route('**/user/authentication/v1.0/otp/mobile/verify**', async (route) => {
+    state.loggedIn = true;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ user: FAKE_USER, user_exists: true, verify_mobile_otp: true, register_token: null }),
+    });
+  });
+
+  await context.route('**/user/authentication/v1.0/session**', async (route) => {
+    await route.fulfill({
+      status: state.loggedIn ? 200 : 401,
+      contentType: 'application/json',
+      body: JSON.stringify(state.loggedIn ? { authenticated: true, user: FAKE_USER } : { authenticated: false }),
+    });
+  });
+
+  return state;
+}
+
+/**
  * Drive the real login UI: open login, enter mobile, request OTP, enter OTP.
  * Assumes auth stubs are already installed on the page.
  */
@@ -110,4 +138,4 @@ export const test = base.extend({
   },
 });
 
-export { expect, loginViaOtp };
+export { expect, loginViaOtp, installAuthStubsContext };

@@ -453,20 +453,27 @@ export class PDPPage {
       .first();
   }
 
-  /** All cell texts of a breakup row. */
+  /** All cell texts of a breakup row ([] if the row is absent). */
   async priceBreakupRowCells(component) {
-    const cells = await this.priceBreakupRow(component).locator('td').allInnerTexts().catch(() => []);
+    const row = this.priceBreakupRow(component);
+    if (await row.count() === 0) return [];
+    const cells = await row.locator('td').allInnerTexts().catch(() => []);
     return cells.map(c => c.trim());
   }
 
-  /** The "Final Value" cell text for a component row. */
+  /** The "Final Value" cell text for a component row ('' if absent). */
   async priceBreakupFinalValue(component) {
-    return (await this.priceBreakupRow(component).locator('td.final-value, td:last-child').first().innerText().catch(() => '')).trim();
+    const row = this.priceBreakupRow(component);
+    if (await row.count() === 0) return '';
+    return (await row.locator('td.final-value, td:last-child').first().innerText().catch(() => '')).trim();
   }
 
-  /** Full text of a breakup row (for parsing rate/weight/value). */
+  /** Full text of a breakup row ('' if absent — guarded so a missing row
+   *  doesn't block on innerText() for the whole test timeout). */
   async priceBreakupRowText(component) {
-    return (await this.priceBreakupRow(component).innerText().catch(() => '')).trim();
+    const row = this.priceBreakupRow(component);
+    if (await row.count() === 0) return '';
+    return (await row.innerText().catch(() => '')).trim();
   }
 
   /** Is the breakup table currently visible/expanded? */
@@ -508,6 +515,332 @@ export class PDPPage {
       if (await this.isOutOfStock()) return { index: i, found: true };
     }
     return { found: false };
+  }
+
+  // ── Pincode / delivery ────────────────────────────────────────
+  // Delivery section: .delivery-info-wrapper > h5.info-clickable ("Click here
+  // to check delivery date"). Clicking opens the .productRequestModal:
+  //   h4.delivery-label (title) · p.delivery-subtitle · input.pincode-input
+  //   (type=tel, maxlength=6, digit-only) · button.delivery-submit ·
+  //   "OR" · button.delivery-locate ("Locate Me") · p.locate-info · .cross close
+
+  get deliveryWrapper()    { return this.page.locator('.delivery-info-wrapper').first(); }
+  get deliveryTrigger()    { return this.page.locator('.delivery-info-wrapper .info-clickable, .delivery-info-wrapper .click').first(); }
+  get pincodeModal()       { return this.page.locator('.productRequestModal').first(); }
+  get pincodeModalTitle()  { return this.page.locator('.productRequestModal .delivery-label').first(); }
+  get pincodeModalSubtitle(){ return this.page.locator('.productRequestModal .delivery-subtitle').first(); }
+  get pincodeInput()       { return this.page.locator('.productRequestModal input.pincode-input, .productRequestModal input[placeholder*="PIN" i]').first(); }
+  get pincodeSubmit()      { return this.page.locator('.productRequestModal button.delivery-submit').first(); }
+  get pincodeLocateBtn()   { return this.page.locator('.productRequestModal button.delivery-locate').first(); }
+  get pincodeSecureText()  { return this.page.locator('.productRequestModal .locate-info').first(); }
+  get pincodeOrSeparator() { return this.page.locator('.productRequestModal .or-lable-cont').first(); }
+  get pincodeModalClose()  { return this.page.locator('.productRequestModal .cross').first(); }
+
+  /** Any error/serviceability message shown inside the pincode modal. */
+  get pincodeMessage() {
+    return this.page.locator('.productRequestModal')
+      .getByText(/incorrect pincode|valid 6-digit|required|not available|unavailable|book a store|nearby store/i)
+      .first();
+  }
+
+  /**
+   * The inline validation/serviceability error that renders in the delivery
+   * section (NOT the modal) after submitting a bad/unserviceable pincode —
+   * e.g. <p class="error">Please enter a valid PIN code</p>.
+   */
+  get pincodeError() {
+    return this.page.locator('p.error, .delivery-info-wrapper .error')
+      .filter({ hasText: /valid pin|not available|incorrect|serviceab|required/i })
+      .first();
+  }
+
+  /** Submit a pincode and return the inline delivery-section error text ('' if none). */
+  async pincodeErrorText(value) {
+    await this.pincodeInput.fill(value);
+    await this.pincodeSubmit.click();
+    await this.page.waitForTimeout(2200);
+    if (await this.pincodeError.count() === 0) return '';
+    return (await this.pincodeError.innerText({ timeout: 2000 }).catch(() => '')).trim();
+  }
+
+  /** Open the pincode/delivery modal from the delivery section. */
+  async openPincodeModal() {
+    await this.deliveryTrigger.scrollIntoViewIfNeeded().catch(() => {});
+    await this.deliveryTrigger.click();
+    await this.pincodeModal.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /** Fill the pincode field and click Submit. */
+  async submitPincode(value) {
+    await this.pincodeInput.fill(value);
+    await this.pincodeSubmit.click();
+    await this.page.waitForTimeout(900);
+  }
+
+  /** Type a raw string into the pincode field char-by-char (respects the
+   *  field's digit-only / maxlength keypress filter), then read back the value. */
+  async typePincodeRaw(raw) {
+    await this.pincodeInput.click();
+    await this.pincodeInput.fill('');
+    await this.pincodeInput.pressSequentially(raw, { delay: 20 });
+    return this.pincodeInput.inputValue();
+  }
+
+  /** Visible text of the delivery section (collapsed line or resolved date). */
+  async deliveryText() {
+    return (await this.deliveryWrapper.innerText().catch(() => '')).trim();
+  }
+
+  // ── Cart / CTA / certificates ─────────────────────────────────
+  // In-stock CTAs are <button class="button"> ("Add to cart") and
+  // <button class="button buy-now"> ("Buy Now"). Store/service CTAs are
+  // <a class="btn-book-appointment"> / "Find Nearest Store". OOS replaces the
+  // primary CTA with a disabled "Out Of Stock" button (button.hollow-btn).
+
+  get buyNowBtn()          { return this.page.getByRole('button', { name: /buy now/i }).first(); }
+  get scheduleCallBtn()    { return this.page.getByRole('button', { name: /schedule call/i }).or(this.page.getByText(/schedule call/i)).first(); }
+  get bookAppointmentBtn() { return this.page.getByRole('link', { name: /book appointment/i }).or(this.page.getByRole('button', { name: /book appointment/i })).first(); }
+  get findNearestStoreBtn(){ return this.page.getByText(/find nearest store|find.*store/i).first(); }
+  get requestCallbackBtn() { return this.page.getByText(/request callback/i).first(); }
+  get cartCountBadge()     { return this.page.locator('[class*="cart-count"], [class*="cart"] [class*="count"], [class*="cart"] [class*="badge"]').first(); }
+
+  /** Click Add to Cart (no-op safe if disabled/absent is handled by caller). */
+  async addToCart() {
+    await this.addToCartBtn.scrollIntoViewIfNeeded().catch(() => {});
+    await this.addToCartBtn.click();
+    await this.page.waitForTimeout(1200);
+  }
+
+  /** Read the numeric cart count from the header badge (0 if none/absent). */
+  async cartCount() {
+    // count() returns immediately; innerText() on a 0-match locator would
+    // otherwise block for the full test timeout.
+    if (await this.cartCountBadge.count() === 0) return 0;
+    const txt = (await this.cartCountBadge.innerText({ timeout: 2000 }).catch(() => '')).trim();
+    const n = Number((txt.match(/\d+/) || [])[0]);
+    return Number.isNaN(n) ? 0 : n;
+  }
+
+  /** Click the wishlist heart. */
+  async clickWishlist() {
+    await this.wishlistIcon.scrollIntoViewIfNeeded().catch(() => {});
+    await this.wishlistIcon.click();
+    await this.page.waitForTimeout(800);
+  }
+
+  /**
+   * The HEADER wishlist heart (top-right, .wishlist-icon-wrapper > svg.wishlist-icon).
+   * Targeted precisely so we don't hit the search bar's camera/mic container,
+   * which also matches a loose [class*="wish"] selector. For a guest this is the
+   * gated entry point — clicking it redirects to /auth/login.
+   */
+  get headerWishlist() {
+    return this.page.locator('.wishlist-icon-wrapper').first();
+  }
+
+  /** Click the header wishlist heart (the login-gated entry point). */
+  async clickHeaderWishlist() {
+    await this.headerWishlist.scrollIntoViewIfNeeded().catch(() => {});
+    await this.headerWishlist.click();
+    await this.page.waitForTimeout(1500);
+  }
+
+  /** Is a login prompt/modal visible (e.g. after a guest wishlist click)? */
+  async loginPromptVisible() {
+    return this.page
+      .getByText(/log\s?in|sign\s?in|otp|mobile number|continue with/i)
+      .first()
+      .isVisible()
+      .catch(() => false);
+  }
+
+  // ── Detail accordion ──────────────────────────────────────────
+  // Sections render as <div class="accordion-row" data-is-accordion-open>
+  // (Product Details, Product Highlights, Price Breakup, More Info) with
+  // .open-accordion (+) / .close-accordion (−) icons. Content sits in the
+  // panel that follows each row (not inside the row itself).
+
+  /** A detail accordion section row, by its header label. */
+  accordionRow(name) {
+    return this.page.locator('.accordion-row').filter({ hasText: new RegExp(name, 'i') }).first();
+  }
+
+  /** Header labels of all detail accordion sections, in order. */
+  async accordionSections() {
+    const rows = await this.page.locator('.accordion-row').allInnerTexts().catch(() => []);
+    return rows.map(t => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  }
+
+  /** Is a given section currently expanded? */
+  async isAccordionOpen(name) {
+    return (await this.accordionRow(name).getAttribute('data-is-accordion-open').catch(() => null)) === 'true';
+  }
+
+  /** Expand a section (no-op if already open). */
+  async expandAccordion(name) {
+    const row = this.accordionRow(name);
+    await row.scrollIntoViewIfNeeded().catch(() => {});
+    if (!(await this.isAccordionOpen(name))) {
+      await row.click();
+      await this.page.waitForTimeout(500);
+    }
+  }
+
+  /** Collapse a section (no-op if already closed). */
+  async collapseAccordion(name) {
+    if (await this.isAccordionOpen(name)) {
+      await this.accordionRow(name).click();
+      await this.page.waitForTimeout(500);
+    }
+  }
+
+  /** Text of the content panel that follows a section row (sibling walk). */
+  async accordionBodyText(name) {
+    await this.expandAccordion(name);
+    return this.accordionRow(name).evaluate(row => {
+      let sib = row.nextElementSibling, txt = '';
+      while (sib && !sib.classList.contains('accordion-row')) {
+        txt += ' ' + (sib.textContent || '');
+        sib = sib.nextElementSibling;
+      }
+      return txt.replace(/\s+/g, ' ').trim();
+    }).catch(() => '');
+  }
+
+  // ── Book Appointment (/form/book-appointment) ─────────────────
+  // A Nitrozen form: each field is a .nitrozen-dropdown-container identified by
+  // its label.nitrozen-dropdown-label ("Store Name *", "Reason For Visit *",
+  // "Contact Number *", "Date *", "Time *"). Options are .nitrozen-option
+  // [data-value]. There is NO City dropdown (Store Name lists stores directly).
+
+  get appointmentHeading() {
+    return this.page.locator('.form .title, h1, h2, h3').filter({ hasText: /book appointment/i }).first();
+  }
+  get appointmentSubmit() {
+    return this.page.getByRole('button', { name: /^submit$/i }).first();
+  }
+
+  /** Navigate straight to the appointment form page. */
+  async gotoAppointmentForm() {
+    await this.page.goto('/form/book-appointment', { waitUntil: 'domcontentloaded' });
+    await this.appointmentHeading.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    await this.page.waitForTimeout(800);
+  }
+
+  /** A Nitrozen field container by its label text. */
+  apptField(label) {
+    return this.page
+      .locator('.nitrozen-dropdown-container, .nitrozen-custom-form-input')
+      .filter({ has: this.page.locator('.nitrozen-dropdown-label', { hasText: new RegExp(label, 'i') }) })
+      .first();
+  }
+
+  /** Open a Nitrozen dropdown field by label. */
+  async openApptField(label) {
+    const trigger = this.apptField(label).locator('.nitrozen-select__trigger, .nitrozen-select');
+    await trigger.first().click().catch(() => {});
+    await this.page.waitForTimeout(400);
+  }
+
+  /** Option elements of an appointment dropdown field. */
+  apptOptions(label) {
+    return this.apptField(label).locator('.nitrozen-option');
+  }
+
+  /**
+   * Labels present on the appointment form. Required fields render their label
+   * with a trailing "*", so we match those — this catches all field types
+   * (dropdowns, the Contact input, and the Date/Time pickers), not just
+   * .nitrozen-dropdown-label which only covers the dropdowns.
+   */
+  async appointmentFieldLabels() {
+    const all = await this.page.locator('label, [class*="label"]').allInnerTexts().catch(() => []);
+    return [...new Set(
+      all.map(t => t.replace(/\s+/g, ' ').trim())
+         .filter(t => t.includes('*') && t.length < 40)
+         .map(t => t.replace('*', '').trim())
+    )];
+  }
+
+  // ── Header / nav ──────────────────────────────────────────────
+  // Top bar: Today's Gold Rate, GSV, Call Back, Locate Store, Log In.
+  // Sub-header: logo (img[alt="Brand Logo"] → href="/"), #searchInput,
+  // wishlist + cart icons (.wishlist-cart-container). Mega-menu: All Jewellery
+  // → L2 (Metals/Gender/Styles) → L3 (Gold/Women/Jhumkas…).
+
+  get searchInput() {
+    return this.page.locator('#searchInput, input[placeholder*="Search" i]').first();
+  }
+  get headerLogo() {
+    return this.page.locator('a[href="/"]:has(img[alt*="Brand Logo" i]), [class*="logo"] a, header a:has(img)').first();
+  }
+  get megaMenuTrigger() {
+    return this.page.getByText(/all jewellery/i).first();
+  }
+
+  /** Is a header touchpoint with the given text visible? */
+  async headerHasText(text) {
+    return this.page.getByText(new RegExp(text, 'i')).first().isVisible().catch(() => false);
+  }
+
+  /** Type a query into the header search and submit (Enter). */
+  async searchFor(query) {
+    await this.searchInput.click();
+    await this.searchInput.fill(query);
+    await this.searchInput.press('Enter');
+    await this.page.waitForTimeout(1500);
+  }
+
+  // ── Mobile / mWeb ─────────────────────────────────────────────
+  // Mobile PDP markup (captured on iPhone 13 viewport): the image gallery is a
+  // Glide.js swipe carousel `.mobile-pdp-carousel-box` (.glide--swipeable) with
+  // an image counter `p.media-count` ("1/2"); the mobile zoom hint is
+  // `p.zoom-info` ("Press and hold to zoom"); category nav opens from
+  // `.hamburger-menu-trigger`; product sections are `.accordion` blocks with an
+  // `.accordion-row` header and `.accordion-data` body.
+
+  // The VISIBLE mobile gallery is `.mobile .glide-cont` (the `.mobile-pdp-carousel-box`
+  // wrapper is rendered 0-size, so don't target it). The on-screen slide is the
+  // Glide active slide; off-screen slides sit at negative x and aren't clickable.
+  get mobileCarousel()    { return this.page.locator('.mobile .glide-cont').first(); }
+  get activeSlideImage()  { return this.page.locator('.mobile .glide__slide--active img, .mobile .glide-cont img').first(); }
+  // Two `p.media-count` exist (hidden desktop + visible mobile) — scope to .mobile.
+  get mediaCounter()      { return this.page.locator('.mobile p.media-count').first(); }
+  get zoomInstruction()  { return this.page.getByText(/press and hold to zoom/i).first(); }
+  get hamburgerTrigger() { return this.page.locator('.hamburger-menu-trigger, .hamburger-icon, [class*="hamburger"]').first(); }
+  get scheduleCallCta()  { return this.page.getByText(/schedule call/i).first(); }
+  get accordionRows()    { return this.page.locator('.accordion .accordion-row'); }
+  accordionRow(name)     { return this.page.locator('.accordion-row').filter({ hasText: new RegExp(name, 'i') }).first(); }
+  accordionBodyFor(name) {
+    return this.page.locator('.accordion').filter({ hasText: new RegExp(name, 'i') }).locator('.accordion-data').first();
+  }
+
+  /** Counter text like "1/2" → [current, total] (or [null,null]). */
+  async mediaCounterValues() {
+    if (await this.mediaCounter.count() === 0) return [null, null];
+    const m = (await this.mediaCounter.innerText().catch(() => '')).match(/(\d+)\s*\/\s*(\d+)/);
+    return m ? [Number(m[1]), Number(m[2])] : [null, null];
+  }
+
+  /**
+   * Horizontal touch-swipe across a locator (Glide listens to touch events).
+   * `dir` 'left' advances to the next slide, 'right' to the previous.
+   */
+  async swipe(locator, dir = 'left') {
+    const box = await locator.boundingBox();
+    if (!box) return false;
+    const y  = box.y + box.height / 2;
+    const x1 = dir === 'left' ? box.x + box.width * 0.85 : box.x + box.width * 0.15;
+    const x2 = dir === 'left' ? box.x + box.width * 0.15 : box.x + box.width * 0.85;
+    await locator.evaluate((el, { x1, x2, y }) => {
+      const t = (x) => new Touch({ identifier: 1, target: el, clientX: x, clientY: y, radiusX: 2, radiusY: 2, force: 1 });
+      el.dispatchEvent(new TouchEvent('touchstart', { touches: [t(x1)], bubbles: true, cancelable: true }));
+      el.dispatchEvent(new TouchEvent('touchmove',  { touches: [t((x1 + x2) / 2)], bubbles: true, cancelable: true }));
+      el.dispatchEvent(new TouchEvent('touchmove',  { touches: [t(x2)], bubbles: true, cancelable: true }));
+      el.dispatchEvent(new TouchEvent('touchend',   { touches: [], changedTouches: [t(x2)], bubbles: true, cancelable: true }));
+    }, { x1, x2, y });
+    await this.page.waitForTimeout(700);
+    return true;
   }
 }
 

@@ -4,14 +4,21 @@
   "description": "Playwright tests for Reliance Jewels",
   "type": "module",
   "scripts": {
-    "test": "playwright test",
-    "test:headed": "playwright test --headed",
+    "setup": "npm install && npx playwright install chromium",
+    "test": "playwright test plp-p0 clp-p0 search-p0",
+    "test:plp": "playwright test plp-p0",
+    "test:clp": "playwright test clp-p0",
+    "test:search": "playwright test search-p0",
+    "test:headed": "playwright test plp-p0 clp-p0 search-p0 --headed",
     "test:ui": "playwright test --ui",
+    "test:pdp": "playwright test pdp-P0,P1",
+    "report": "node scripts/generate-report-pdf.mjs",
+    "report:html": "playwright show-report",
+    "test:report": "npm run test; npm run report",
+    "portal": "node scripts/portal-server.mjs",
+    "portal:cli": "node scripts/test-portal.mjs",
     "codegen": "playwright codegen https://reliancejewels.snghostz5.de/",
-    "diagram": "node docs/render-diagram.js",
-    "report": "playwright show-report",
-    "report:pdf": "node scripts/generate-report-pdf.mjs",
-    "test:report": "playwright test plp-p0 clp-p0 search-p0; node scripts/generate-report-pdf.mjs"
+    "diagram": "node docs/render-diagram.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0"
