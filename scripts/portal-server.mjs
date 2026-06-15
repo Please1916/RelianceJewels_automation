@@ -35,6 +35,8 @@ async function loadSuites() {
       label: cfg.portalLabel || cfg.moduleLabel || key.toUpperCase(),
       spec: cfg.spec || key,
       aliases: [key, ...(cfg.portalAliases || [])],
+      // Optional per-suite report generator; falls back to the shared script.
+      reportScript: cfg.reportScript || 'scripts/generate-report-pdf.mjs',
     });
   }
 
@@ -45,6 +47,7 @@ async function loadSuites() {
       label: `All suites (${pages.map((p) => p.key.toUpperCase()).join(' + ')})`,
       spec: pages.map((p) => p.spec).join(' '),
       aliases: ['all', 'everything', 'full'],
+      reportScript: 'scripts/generate-report-pdf.mjs',
     });
   }
   return pages;
@@ -183,8 +186,8 @@ const server = http.createServer(async (req, res) => {
 
     child.on('close', (code) => {
       if (!report) { res.write(`event: done\ndata: ${code ?? 1}\n\n`); return res.end(); }
-      send('\n📄 Generating PDF report…');
-      const gen = spawn('node scripts/generate-report-pdf.mjs', { cwd: ROOT, shell: true });
+      send(`\n📄 Generating PDF report… (${suite.reportScript})`);
+      const gen = spawn(`node ${suite.reportScript}`, { cwd: ROOT, shell: true });
       pipe(gen.stdout); pipe(gen.stderr);
       gen.on('close', () => { res.write(`event: done\ndata: ${code ?? 1}\n\n`); res.end(); });
     });
