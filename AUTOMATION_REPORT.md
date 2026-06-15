@@ -10,26 +10,26 @@
 ## 1. Executive summary
 
 Automated end-to-end coverage is live for **three storefront pages** — Product
-Listing (PLP), Collection Listing (CLP), and Search — totalling **71 automated
-test cases**, plus 3 PLP performance cases handled via Lighthouse and a 2-test
-login framework. A full run was executed for this report.
+Listing (PLP), Collection Listing (CLP), and Search — totalling **91 automated
+test cases** (P0 + P1), plus 4 performance cases handled via Lighthouse and a
+2-test login framework. A full run was executed for this report.
 
 | Result | Count |
 |---|---|
-| ✅ Passed | **53** |
+| ✅ Passed | **65** |
 | ❌ Genuine (unexpected) failures | **0** |
-| ⚠️ Known defects / findings (fail by design, tracked) | 13 |
-| ⏸️ Manual-verification (CMS-config, skipped) | 5 |
-| **Total automated cases this run** | **71** |
+| ⚠️ Known defects / findings (fail by design, tracked) | 18 |
+| ⏸️ Manual-verification (CMS-config, skipped) | 8 |
+| **Total automated cases this run** | **91** |
 
 **Headline:** every case that is *expected* to pass does pass — **0 unexpected
-failures**. The 13 "failing" cases are deliberately flagged known defects and
+failures**. The 18 "failing" cases are deliberately flagged known defects and
 product findings (they fail on purpose to surface gaps vs. the PRD and are
-tracked by the dev team). 5 cases require a CMS-configured page and are verified
+tracked by the dev team). 8 cases require a CMS-configured page and are verified
 manually.
 
-> **Executed pass rate:** 53 / 53 expected-pass cases = **100%** (0 unexpected
-> failures). Including flagged known-defects in the denominator: 53 / 66 = 80%.
+> **Executed pass rate:** 65 / 65 expected-pass cases = **100%** (0 unexpected
+> failures). Including flagged known-defects in the denominator: 65 / 83 = 78%.
 
 ---
 
@@ -38,12 +38,12 @@ manually.
 | Page | Suite file | Cases | Run command |
 |---|---|---|---|
 | **PLP** — Product Listing Page | `tests/plp.spec.js` | 51 | `npm run test:plp` |
-| **CLP** — Collection Listing Page | `tests/clp-p0.spec.js` | 9 | `npm run test:clp` |
-| **Search** | `tests/search-p0.spec.js` | 11 | `npm run test:search` |
+| **CLP** — Collection Listing Page | `tests/clp.spec.js` | 23 | `npm run test:clp` |
+| **Search** | `tests/search.spec.js` | 17 | `npm run test:search` |
 | _Login / auth framework_ | `tests/login.spec.js` | 2 | (supports the above) |
 
-Additionally: **PLP-064 / 065 / 066** (performance) are covered separately via
-Lighthouse, not in the Playwright run.
+Additionally: **PLP-064 / 065 / 066** and **CLP-028** (performance) are covered
+separately via Lighthouse, not in the Playwright run.
 
 ### Status legend
 - ✅ **Passed** — behaviour verified against the live site.
@@ -128,44 +128,83 @@ Lighthouse, not in the Playwright run.
 
 ---
 
-## 4. CLP — Collection Listing Page (9 cases · 6 ✅ / 3 🐞)
+## 4. CLP — Collection Listing Page (23 cases · 13 ✅ / 7 🐞 / 3 ⏸️)
 
+### Core functional (P0)
 | TC | Case | Title | Status |
 |----|------|-------|--------|
-| TC_19 | CLP-001 | Header & nav on CLP matches HomePage | ✅ |
-| TC_20 | CLP-007 | Card shows image and tag only in default state | ✅ *(annotated known-defect; passed this run)* |
-| TC_21 | CLP-008 | Detail panel slides in on hover | 🐞 known defect |
-| TC_22 | CLP-009 | Hover detail panel shows required fields | 🐞 known defect |
-| TC_23 | CLP-011 | "Discover More" CTA on hover navigates to PDP | 🐞 known defect |
-| TC_24 | CLP-012 | Clicking a product card navigates to PDP | ✅ |
-| TC_25 | CLP-014 | Filters work on CLP same as PLP | ✅ |
-| TC_26 | CLP-015 | Sort works on CLP same as PLP | ✅ |
-| TC_27 | CLP-026 | Infinite scroll / load more on CLP | ✅ |
+| TC_01 | CLP-001 | Header & nav on CLP matches HomePage | ✅ |
+| TC_02 | CLP-007 | Card shows image and tag only (name hidden by default) | ✅ *(annotated known-defect; passes)* |
+| TC_03 | CLP-008 | Detail panel slides in on hover | 🐞 known defect |
+| TC_04 | CLP-009 | Hover detail panel shows required fields | 🐞 known defect |
+| TC_05 | CLP-011 | "Discover More" CTA on hover navigates to PDP | 🐞 known defect |
+| TC_06 | CLP-012 | Clicking a product card navigates to PDP | ✅ |
+| TC_07 | CLP-014 | Filters work on CLP same as PLP (no full reload) | ✅ |
+| TC_08 | CLP-015 | Sort Price Low → High ascending | ✅ |
+| TC_09 | CLP-026 | Infinite scroll / load more on CLP | ✅ |
 
-**Known defects:** the CLP card **hover detail panel** (slide-in panel, its
-required fields, and the "Discover More" CTA → PDP) does not behave per the PRD.
-Tracked by the dev team.
+### Functional (P1)
+| TC | Case | Title | Status |
+|----|------|-------|--------|
+| TC_10 | CLP-002 | Nav bar & page title hide on scroll down | 🐞 known defect |
+| TC_11 | CLP-003 | Nav bar & page title reappear on scroll up | ✅ |
+| TC_12 | CLP-004 | Total product count is displayed | ✅ |
+| TC_13 | CLP-005 | Product count updates when filters applied | ✅ |
+| TC_14 | CLP-006 | Breadcrumb shown with clickable segments | ✅ |
+| TC_15 | CLP-010 | Detail panel slides out on hover-off | 🐞 known defect |
+| TC_16 | CLP-013 | Wishlist icon visible on hover | ✅ |
+| TC_17 | CLP-016 | Filter + sort combination (ascending price) | ✅ |
+| TC_21 | CLP-024 | Skeleton/shimmer loader while loading | 🐞 known defect |
+| TC_22 | CLP-025 | Scroll position restoration on return from PDP | ✅ |
+| TC_23 | CLP-027 | Product images are lazy-loaded | 🐞 known defect |
+
+### Manual verification (CMS-config required)
+| TC | Case | Title | Status |
+|----|------|-------|--------|
+| TC_18 | CLP-017 | Text-only header type on CLP | ⏸️ manual |
+| TC_19 | CLP-018 | Image banner header type on CLP | ⏸️ manual |
+| TC_20 | CLP-019 | Video banner header (auto-play + muted) on CLP | ⏸️ manual |
+
+**Known defects:** the CLP card **hover detail panel** (CLP-008/009/010/011 — the
+slide-in panel, its fields, and the "Discover More" CTA → PDP), the **sticky nav**
+not hiding on scroll-down (CLP-002), the missing **skeleton loader** (CLP-024),
+and **no image lazy-loading** (CLP-027) do not behave per the PRD. Tracked by the
+dev team. **Deferred:** CLP-028 (page load < 3s) is verified via Lighthouse.
 
 ---
 
-## 5. Search (11 cases · 9 ✅ / 2 🔎)
+## 5. Search (17 cases · 14 ✅ / 3 🐞🔎)
 
+### Core functional (P0)
 | TC | Case | Title | Status |
 |----|------|-------|--------|
-| TC_28 | SRC-001 | Persistent search bar in header on all pages | ✅ |
-| TC_29 | SRC-002 | Search bar accessible on PDP and Cart | ✅ |
-| TC_30 | SRC-003 | Search by product name | ✅ |
-| TC_31 | SRC-004 | Search by SKU (numeric id) | 🔎 finding |
-| TC_32 | SRC-005 | Search by RRL code (slug code) | 🔎 finding |
-| TC_33 | SRC-006 | Search by category name | ✅ |
-| TC_34 | SRC-007 | Type-ahead suggestions appear after 2+ characters | ✅ |
-| TC_35 | SRC-008 | Type-ahead shows BOTH products AND categories | ✅ |
-| TC_36 | SRC-011 | Clicking a suggestion navigates correctly | ✅ |
-| TC_37 | SRC-012 | Search results use PLP layout | ✅ |
-| TC_38 | SRC-015 | No-results state for invalid search | ✅ |
+| TC_01 | SRC-001 | Persistent search bar in header on all pages | ✅ |
+| TC_02 | SRC-002 | Search bar accessible on PDP and Cart | ✅ |
+| TC_03 | SRC-003 | Search by product name | ✅ |
+| TC_04 | SRC-004 | Search by SKU (numeric id) | 🔎 finding |
+| TC_05 | SRC-005 | Search by RRL code (slug code) | 🔎 finding |
+| TC_06 | SRC-006 | Search by category name | ✅ |
+| TC_07 | SRC-007 | Type-ahead suggestions appear after 2+ characters | ✅ |
+| TC_08 | SRC-008 | Type-ahead shows BOTH products AND categories | ✅ |
+| TC_09 | SRC-011 | Clicking a suggestion navigates correctly | ✅ |
+| TC_10 | SRC-012 | Search results use PLP layout | ✅ |
+| TC_11 | SRC-015 | No-results state for invalid search | ✅ |
 
-**Findings:** searching by **SKU** (SRC-004) and by **RRL code** (SRC-005) does
-not return the expected product. Flagged for the dev team.
+### Functional (P1)
+| TC | Case | Title | Status |
+|----|------|-------|--------|
+| TC_12 | SRC-009 | Suggestions appear quickly (≈300ms PRD target) | ✅ *(latency finding)* |
+| TC_13 | SRC-010 | No suggestions for a single character | ✅ |
+| TC_14 | SRC-013 | Filters work on the search-results page | ✅ |
+| TC_15 | SRC-014 | Sort works on the search-results page | ✅ |
+| TC_16 | SRC-016 | Search-to-results time (≈500ms PRD target) | ✅ *(latency finding)* |
+| TC_17 | SRC-017 | Trending/recommended keywords on search-bar click | 🐞 known defect |
+
+**Findings:** searching by **SKU** (SRC-004) and **RRL code** (SRC-005) does not
+return the expected product; **trending/recommended keywords** do not appear on
+search-bar focus (SRC-017). Type-ahead and search latency (SRC-009 / SRC-016) can
+exceed the PRD's 300ms / 500ms targets on the UAT host (logged as findings).
+Flagged for the dev team.
 
 ---
 

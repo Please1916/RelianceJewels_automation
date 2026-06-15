@@ -2,21 +2,21 @@
 // Usage:  npm run report           (auto-detects the page from the test ids)
 //         npm run report -- pdp    (force a specific report-config/<page>.js)
 //
-// Per-page metadata (sections, P0 ids, Lighthouse count) lives in
-// report-config/<page>.js — NOT in this script. The script auto-loads the
-// config whose name matches the run's test-id prefix (e.g. ids "PLP-001" ->
-// report-config/plp.js). To report a new page, add report-config/<page>.js
-// (copy _template.js); never edit this file.
+// All parsing + per-page metadata resolution lives in scripts/report-data.mjs
+// (shared with the web portal). This script is purely the PDF presentation
+// layer. To report a new page, add report-config/<page>.js (copy _template.js);
+// never edit this file.
 //
 // - Manager-facing: donut chart, coverage strip, section-grouped results.
 // - The results table lists only executed automated tests (passed + genuine
 //   failures). Skipped (manual) and known-defect tests are summarised in the
-//   chart / coverage strip and the "Known product gaps" box, not the table.
+//   chart / coverage strip, not the table.
 // - Any genuine, unexpected failure is shown with its error log + screenshot.
 import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { buildReport, escapeHtml, imgDataUri } from './report-data.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const jsonPath = path.join(root, 'report', 'results.json');
@@ -28,102 +28,31 @@ if (!fs.existsSync(jsonPath)) {
   process.exit(1);
 }
 
-const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-const stripAnsi = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, '');
-const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
 // Brand asset — shared across all pages.
 const LOGO = 'https://cdn.pixelbin.io/v2/yellow-queen-0c3fa9/gly4zC/wrkr/sngz5/company/27/applications/64e83eb1653e8ab101c11f2e/application/pictures/free-logo/original/gM_1D1xVi-Reliance-Jewels.webp';
-const isFlagged = (t) => /\[(KNOWN DEFECT|FINDING)\]/i.test(t);
 
-// ---- Flatten the suite tree (section + priority are filled in below, once
-//      the page config is known) ----
-const specs = [];
-function walk(suite, file) {
-  const f = suite.file || file;
-  for (const spec of suite.specs || []) {
-    const results = spec.tests?.[0]?.results || [];
-    const last = results[results.length - 1] || {};
-    const [tc, ...rest] = spec.title.split(' | ');
-    const rawName = rest.join(' | ') || spec.title;
-    const id = (rawName.match(/^([A-Z]{2,}-\d+)/) || [])[1] || '';
-    const stripped = rawName.replace(/^[A-Z]+-\d+\s*/i, '').replace(/\s*\[(KNOWN DEFECT|FINDING)\]/i, '').trim();
-    const status = last.status || 'unknown';
-    let klass; // pass | fail | gap | manual
-    if (status === 'skipped') klass = 'manual';
-    else if (spec.ok && status === 'passed') klass = 'pass';
-    else if (isFlagged(spec.title)) klass = 'gap';
-    else klass = 'fail';
-    const shot = (last.attachments || []).find((a) => a.name === 'screenshot' && a.path && fs.existsSync(a.path));
-    specs.push({
-      tc: tc.trim(), id, file: f,
-      name: stripped.charAt(0).toUpperCase() + stripped.slice(1),
-      klass,
-      flaky: klass === 'pass' && results.length > 1,
-      duration: results.reduce((a, r) => a + (r.duration || 0), 0),
-      error: stripAnsi(last.errors?.[0]?.message || last.error?.message || '').trim(),
-      screenshot: shot ? shot.path : null,
-    });
-  }
-  for (const child of suite.suites || []) walk(child, f);
-}
-(data.suites || []).forEach((s) => walk(s, s.file));
-specs.sort((a, b) => a.tc.localeCompare(b.tc, undefined, { numeric: true }));
-
-// ---- Pick the page config: CLI arg / REPORT_PAGE env, else the most common
-//      test-id prefix (PLP-001 -> "plp"). Load report-config/<page>.js. ----
-const prefixCounts = {};
-for (const s of specs) {
-  const m = (s.id || '').match(/^([A-Za-z]+)-/);
-  if (m) { const k = m[1].toLowerCase(); prefixCounts[k] = (prefixCounts[k] || 0) + 1; }
-}
-const detected = Object.entries(prefixCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-const pageKey = (process.argv[2] || process.env.REPORT_PAGE || detected || 'report').toLowerCase();
-
-let cfg = {};
-const configPath = path.join(root, 'report-config', `${pageKey}.js`);
-if (fs.existsSync(configPath)) {
-  cfg = (await import(pathToFileURL(configPath).href)).default || {};
-} else {
-  console.warn(`! No report-config/${pageKey}.js — using generic defaults `
+const r = await buildReport({
+  root,
+  resultsPath: jsonPath,
+  pageKey: process.argv[2] || process.env.REPORT_PAGE || undefined,
+});
+if (!r.cfgFound) {
+  console.warn(`! No report-config/${r.pageKey}.js — using generic defaults `
     + `(all cases P1, single section). Add one (copy report-config/_template.js).`);
 }
 
-const PERF_LIGHTHOUSE = cfg.perfLighthouse || 0; // verified separately (e.g. Lighthouse)
-const P0_IDS = new Set(cfg.p0Ids || []);
-const SECTIONS = (cfg.sections || []).map(([name, ids]) => [name, new Set(ids)]);
-const sectionOf = (id) => (SECTIONS.find(([, set]) => set.has(id)) || ['Other'])[0];
-const priorityOf = (id) => (P0_IDS.has(id) ? 'P0' : 'P1');
-for (const s of specs) { s.section = sectionOf(s.id); s.priority = priorityOf(s.id); }
-
-// ---- Counts ----
-const count = (k) => specs.filter((s) => s.klass === k).length;
-const passed = count('pass'), realFail = count('fail'), knownGap = count('gap'), manual = count('manual');
-const suiteTotal = specs.length;                 // automated cases in the run
-const scopeTotal = suiteTotal + PERF_LIGHTHOUSE; // + perf cases done via Lighthouse
-const executed = passed + realFail + knownGap;
-const execPassRate = executed ? Math.round((passed / executed) * 100) : 0;
-
-const reportSpecs = specs.filter((s) => s.klass === 'pass' || s.klass === 'fail');
-const moduleLabel = String(cfg.moduleLabel || pageKey).toUpperCase();
-const totalDurationS = (specs.reduce((a, s) => a + s.duration, 0) / 1000).toFixed(1);
-const now = new Date().toLocaleString('en-IN', {
-  timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: '2-digit',
-  hour: '2-digit', minute: '2-digit', hour12: false,
-}) + ' IST';
+const { moduleLabel, reportSpecs, sectionOrder, meta } = r;
+const { passed, failed: realFail, knownGap, manual, suiteTotal, scopeTotal, perfLighthouse } = r.counts;
 const fmtMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
-const imgDataUri = (p) => { try { return `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`; } catch { return null; } };
 
-// ---- Donut chart (all cases in the run) ----
-const segs = [
+// ---- Donut chart — pass / fail only (manual + known-gap excluded) ----
+const donutSegs = [
   { label: 'Passed', value: passed, color: '#1c958f' },
   { label: 'Failed', value: realFail, color: '#c0392b' },
-  { label: 'Known gaps', value: knownGap, color: '#d97706' },
-  { label: 'Manual', value: manual, color: '#9a9a9a' },
 ].filter((s) => s.value > 0);
-const donutTotal = segs.reduce((a, s) => a + s.value, 0) || 1;
+const donutTotal = donutSegs.reduce((a, s) => a + s.value, 0) || 1;
 const R = 65, C = 2 * Math.PI * R; let acc = 0;
-const donutArcs = segs.map((s) => {
+const donutArcs = donutSegs.map((s) => {
   const frac = s.value / donutTotal;
   const arc = `<circle r="${R}" cx="100" cy="100" fill="none" stroke="${s.color}" stroke-width="28"
     stroke-dasharray="${(frac * C).toFixed(2)} ${(C - frac * C).toFixed(2)}"
@@ -131,16 +60,16 @@ const donutArcs = segs.map((s) => {
   acc += frac;
   return arc;
 }).join('');
-const legend = segs.map((s) =>
+const legend = donutSegs.map((s) =>
   `<div class="lg"><span class="dot" style="background:${s.color}"></span>${s.label}
      <b>${s.value}</b><span class="pct">${Math.round((s.value / donutTotal) * 100)}%</span></div>`).join('');
 
+// Verdict: only mention pass / fail
 const verdict = realFail
-  ? `${realFail} unexpected failure${realFail > 1 ? 's' : ''} need attention · ${passed}/${executed} automated checks pass.`
-  : `All ${passed} automated functional checks pass${knownGap ? ` · ${knownGap} known product gap${knownGap > 1 ? 's' : ''} open (tracked separately)` : ''}.`;
+  ? `${realFail} unexpected failure${realFail > 1 ? 's' : ''} need attention · ${passed}/${donutTotal} automated checks pass.`
+  : `All ${passed} automated checks pass.`;
 
 // ---- Results table, grouped by section ----
-const sectionOrder = SECTIONS.map(([n]) => n).concat('Other');
 let zebra = 0;
 const groupsHtml = sectionOrder.map((sec) => {
   const inSec = reportSpecs.filter((s) => s.section === sec);
@@ -237,9 +166,9 @@ const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
       <h1>${escapeHtml(moduleLabel)} — Automated Test Report</h1></div>
     </div>
     <div class="meta">
-      <div>Generated <b>${now}</b></div>
-      <div>Browser <b>${escapeHtml(String(data.config?.projects?.[0]?.name || 'chromium'))}</b> · ${totalDurationS}s</div>
-      <div>Env <b>UAT</b></div>
+      <div>Generated <b>${meta.generatedAt}</b></div>
+      <div>Browser <b>${escapeHtml(meta.browser)}</b> · ${meta.durationS}s</div>
+      <div>Env <b>${escapeHtml(meta.env)}</b></div>
     </div>
   </header>
 
@@ -249,14 +178,13 @@ const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
         <circle r="${R}" cx="100" cy="100" fill="none" stroke="#eee" stroke-width="28"/>
         ${donutArcs}
       </svg>
-      <div class="ctr"><div class="big">${passed}</div><div class="small">of ${donutTotal} cases</div></div>
+      <div class="ctr"><div class="big">${passed}</div><div class="small">of ${donutTotal} checks</div></div>
     </div>
     <div class="hero-info">
       <div class="verdict">${escapeHtml(verdict)}</div>
       <div class="legend">${legend}</div>
-      <div class="coverage">Scope: <b>${scopeTotal}</b> ${escapeHtml(moduleLabel)} cases (P0 + P1) ·
-        <b>${suiteTotal}</b> automated this run ·${PERF_LIGHTHOUSE ? ` <b>${PERF_LIGHTHOUSE}</b> performance cases via Lighthouse ·` : ''}
-        executed automated pass rate <b>${execPassRate}%</b> (${passed}/${executed}).</div>
+      <div class="coverage">Scope: <b>${scopeTotal}</b> ${escapeHtml(moduleLabel)} cases (P0 + P1)${perfLighthouse ? ` · <b>${perfLighthouse}</b> performance cases via Lighthouse` : ''} ·
+        <b>${passed + realFail}</b> automated checks · <b>${passed}</b> passed${realFail ? ` · <b>${realFail}</b> failed` : ''}.</div>
     </div>
   </div>
 
