@@ -7,6 +7,9 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
+# Saved login session (real cookies — never commit)
+playwright/.auth/
+
 # Generated reports (JSON source + PDF)
 report/
 

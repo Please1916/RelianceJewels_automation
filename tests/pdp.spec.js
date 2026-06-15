@@ -3,9 +3,10 @@ import {
   PDPPage, VARIANT_FIELDS, PRICE_BREAKUP_COMPONENTS,
   parseRupees, parseLowestRupee, parseRange, rangesOverlap,
 } from '../pages/PDPPage.js';
-// Stubbed mobile+OTP login helpers (verify/session faked — real OTP can't be
-// received). Context-level stubs so the logged-in state reaches the PDP popup.
-import { loginViaOtp, installAuthStubsContext } from './fixtures.js';
+// Automatic logged-in session for authed tests — NO OTP, NO login UI. A
+// context-level stub reports the user as already authenticated (see
+// installAuthedSessionContext). newAuthed(browser) builds such a context.
+import { installAuthedSessionContext } from './fixtures.js';
 
 /**
  * PDP P0 / P1 functional test cases (15 total).
@@ -132,14 +133,23 @@ test('TC_03 | TC_PDP_IMG_003 | P1 | Left/right arrow navigation cycles images', 
   const srcAfterPrev = await pdp.mainImageSrc();
   expect(srcAfterPrev).toBe(srcBefore);
 
-  // Navigate to last image → next arrow disabled OR loops
+  // Navigate to last image → next arrow must either disable OR loop back to the first image.
   const thumbCount = await pdp.thumbnailCount();
   for (let i = 0; i < thumbCount - 1; i++) await pdp.clickNext();
 
   const disabledAttr = await pdp.nextArrow.getAttribute('disabled');
   const cls          = (await pdp.nextArrow.getAttribute('class')) ?? '';
-  const disabledOrLoops = disabledAttr !== null || cls.includes('disabled') || cls.includes('inactive');
-  expect(disabledOrLoops || true).toBe(true); // loops also valid
+  const isDisabled   = disabledAttr !== null || cls.includes('disabled') || cls.includes('inactive');
+
+  if (isDisabled) {
+    // Valid behaviour #1: the arrow is disabled at the last image.
+    expect(isDisabled, 'next arrow should be disabled at the last image').toBe(true);
+  } else {
+    // Valid behaviour #2: clicking next loops back to the first image.
+    await pdp.clickNext();
+    const srcLooped = await pdp.mainImageSrc();
+    expect(srcLooped, 'next arrow at last image should loop back to the first image when not disabled').toBe(srcBefore);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -872,6 +882,10 @@ for (const [tc, prio, comp] of [
   ['TC_PDP_VAR_020', 'P0', 'GST'],
 ]) {
   test(`${tc} | ${prio} | Price breakup row: ${comp}`, async ({ page }) => {
+    // KNOWN DEFECT: the breakup renders the rows but leaves every Final Value
+    // blank. Asserted per PRD and marked expected-to-fail, so CI stays green
+    // while the defect stands and ALERTS (unexpected pass) when it is fixed.
+    test.fail(true, 'Empty price breakup: component rows render but Final Value is blank.');
     const pdp = new PDPPage(page);
     await pdp.selectProductFromPlp(0);
     await pdp.expandPriceBreakup();
@@ -881,16 +895,18 @@ for (const [tc, prio, comp] of [
     const finalVal = await pdp.priceBreakupFinalValue(comp);
     console.log(`[${tc}] ${comp} row cells = [${cells.join(' | ')}]`);
 
-    const populated = /\d/.test(finalVal);
-    if (!populated) {
-      console.warn(`[${tc} finding] "${comp}" Final Value is "${finalVal}" — breakup row rendered but NOT populated (defect: empty price breakup).`);
-    }
+    // PRD: every component row's Final Value must carry a number.
+    expect(/\d/.test(finalVal), `"${comp}" Final Value should be populated, got "${finalVal}"`).toBe(true);
   });
 }
 
 // ---------------------------------------------------------------------------
 
 test('TC_PDP_VAR_021 | P0 | Grand Total matches displayed price', async ({ page }) => {
+  // KNOWN DEFECT (empty price breakup): the Grand Total / Selling Price row
+  // renders blank, so it cannot be reconciled with the displayed price.
+  // Asserted per PRD, expected-to-fail; alerts when the breakup is populated.
+  test.fail(true, 'Empty price breakup: Grand Total / Selling Price row renders without a numeric value.');
   const pdp = new PDPPage(page);
   await pdp.selectProductFromPlp(0);
   const displayedPrice = await pdp.markedPriceText().catch(() => '');
@@ -900,41 +916,43 @@ test('TC_PDP_VAR_021 | P0 | Grand Total matches displayed price', async ({ page 
                 (await pdp.priceBreakupRowText('Grand Total').catch(() => ''));
   console.log(`[VAR_021] displayed price = "${displayedPrice}", breakup grand/selling row = "${grand}"`);
 
-  const grandNums = parseRupees(grand);
-  if (!grandNums.length) {
-    console.warn('[VAR_021 finding] Grand Total / Selling Price row has no numeric value — cannot reconcile with displayed price (empty breakup).');
-    return;
-  }
-  // If populated, the grand total should appear within the displayed price band.
+  // The displayed price and the breakup grand total must both be numeric so they
+  // can be reconciled.
   const priceNums = parseRupees(displayedPrice);
-  expect(priceNums.length).toBeGreaterThan(0);
+  expect(priceNums.length, 'displayed price should be numeric').toBeGreaterThan(0);
+  const grandNums = parseRupees(grand);
+  expect(grandNums.length, 'Grand Total / Selling Price row should carry a numeric value').toBeGreaterThan(0);
   console.log(`[VAR_021] grand total nums = [${grandNums}], price nums = [${priceNums}]`);
 });
 
 // ---------------------------------------------------------------------------
 
 test('TC_PDP_VAR_025 | P1 | Price breakdown refreshes on variant change', async ({ page }) => {
+  // KNOWN DEFECT (empty price breakup): the MRP row is blank, so a refresh on
+  // variant change cannot be observed. Asserted per PRD, expected-to-fail.
+  test.fail(true, 'Empty price breakup: MRP row is blank, so a variant-change refresh cannot be confirmed.');
   const pdp = new PDPPage(page);
   const found = await pdp.selectVariantProduct();
-  if (!found.found) { console.warn('[VAR_025] No variant product found — skipping.'); return; }
+  test.skip(!found.found, 'No variant product available to test breakup refresh.');
 
   await pdp.expandPriceBreakup();
   const before = await pdp.priceBreakupRowText('MRP').catch(() => '');
 
   // Change Metal Purity if possible.
   const purity = found.labels.find(l => l.includes('METAL PURITY'));
-  if (!purity) { console.warn('[VAR_025] No purity dropdown — skipping.'); return; }
+  test.skip(!purity, 'Selected variant product has no Metal Purity dropdown.');
   const opts = await pdp.variantOptionLabels(purity);
-  if (opts.length < 2) { console.warn('[VAR_025] Single purity option — skipping.'); return; }
+  test.skip(opts.length < 2, 'Metal Purity has only a single option — no variant change possible.');
   const current = await pdp.variantValue(purity);
-  await pdp.selectVariantOption(purity, opts.find(o => o !== current) || opts[1]);
-  await pdp.page.waitForTimeout(600);
+  const chosen = opts.find(o => o !== current) || opts[1];
+  await pdp.selectVariantOption(purity, chosen);
+  // Wait for the selection to take effect rather than sleeping a fixed time.
+  await expect.poll(() => pdp.variantValue(purity), { timeout: 5000 }).toBe(chosen);
 
   const after = await pdp.priceBreakupRowText('MRP').catch(() => '');
   console.log(`[VAR_025] MRP row before = "${before}", after = "${after}"`);
-  if (!/\d/.test(before) && !/\d/.test(after)) {
-    console.warn('[VAR_025 finding] Breakup values are blank both before and after variant change — cannot confirm refresh (empty breakup).');
-  }
+  // PRD: the breakup must carry a numeric MRP after the variant change.
+  expect(/\d/.test(after), `breakup MRP should be populated after variant change, got "${after}"`).toBe(true);
 });
 
 // ===========================================================================
@@ -1349,21 +1367,23 @@ test('TC_PDP_PIN_016 | P1 | Negative | Client-side format + server-side servicea
 
 // ---------------------------------------------------------------------------
 
-test('TC_PDP_PIN_010 | P1 | Pincode auto-populated for logged-in user with a saved address', async ({ page, context }) => {
-  await installAuthStubsContext(context);
-  await loginViaOtp(page);
+test('TC_PDP_PIN_010 | P1 | Pincode auto-populated for logged-in user with a saved address', async ({ browser }) => {
+  const { context, page } = await newAuthed(browser);
+  try {
+    const pdp = new PDPPage(page);
+    await pdp.selectProductFromPlp(0);
 
-  const pdp = new PDPPage(page);
-  await pdp.selectProductFromPlp(0);
+    const deliveryText = await pdp.deliveryText();
+    console.log(`[PIN_010] delivery section text for logged-in user = "${deliveryText}"`);
 
-  const deliveryText = await pdp.deliveryText();
-  console.log(`[PIN_010] delivery section text for logged-in user = "${deliveryText}"`);
-
-  const hasPincode = /\d{6}/.test(deliveryText);
-  if (!hasPincode) {
-    console.warn('[PIN_010 finding] No 6-digit pincode auto-populated for logged-in user — account may have no saved address, or the stub session does not carry address data.');
+    const hasPincode = /\d{6}/.test(deliveryText);
+    if (!hasPincode) {
+      console.warn('[PIN_010 finding] No 6-digit pincode auto-populated for the logged-in user — the saved account may have no default delivery address.');
+    }
+    expect(deliveryText.length, 'delivery section must be present for logged-in user').toBeGreaterThan(0);
+  } finally {
+    await safeClose(context, page);
   }
-  expect(deliveryText.length, 'delivery section must be present for logged-in user').toBeGreaterThan(0);
 });
 
 // ---------------------------------------------------------------------------
@@ -1473,32 +1493,40 @@ test('TC_PDP_CRT_001 | P0 | Add To Cart button visible and clickable (in-stock)'
 
 // ---------------------------------------------------------------------------
 
-test('TC_PDP_CRT_002 | P0 | Product is added to cart on click (logged in)', async ({ page, context }) => {
-  await installAuthStubsContext(context);
-  await loginViaOtp(page);
+test('TC_PDP_CRT_002 | P0 | Product is added to cart on click (logged in)', async ({ browser }) => {
+  const { context, page } = await newAuthed(browser);
+  try {
+    const pdp = new PDPPage(page);
+    await pdp.selectProductFromPlp(0);
+    if (await pdp.isOutOfStock()) { console.warn('[CRT_002] Product 0 OOS — skipping.'); test.skip(true, 'OOS'); return; }
 
-  const pdp = new PDPPage(page);
-  await pdp.selectProductFromPlp(0);
-  if (await pdp.isOutOfStock()) { console.warn('[CRT_002] Product 0 OOS — skipping.'); test.skip(true, 'OOS'); return; }
+    const before = await pdp.cartCount();
+    // Bounded click so an unactionable click can't hang the whole test.
+    await pdp.addToCartBtn.scrollIntoViewIfNeeded().catch(() => {});
+    await pdp.addToCartBtn.click({ timeout: 10_000 }).catch(() => {});
 
-  const before = await pdp.cartCount();
-  // Bounded click — guest add-to-cart may open a login flow / re-render, so we
-  // don't let an unactionable click hang the whole test.
-  await pdp.addToCartBtn.scrollIntoViewIfNeeded().catch(() => {});
-  await pdp.addToCartBtn.click({ timeout: 10_000 }).catch(() => {});
-  await pdp.page.waitForTimeout(1500);
+    // Wait for one of the success signals rather than sleeping a fixed time.
+    const toastLocator = pdp.page.getByText(/added to (your )?(cart|bag)|item added|added successfully/i).first();
+    await Promise.race([
+      expect.poll(() => pdp.cartCount(), { timeout: 8000 }).toBeGreaterThan(before),
+      toastLocator.waitFor({ state: 'visible', timeout: 8000 }),
+    ]).catch(() => {});
 
-  const after  = await pdp.cartCount();
-  const toast  = await pdp.page.getByText(/added to (your )?(cart|bag)|item added|added successfully/i).first().isVisible().catch(() => false);
-  const prompt = await pdp.loginPromptVisible();
-  console.log(`[CRT_002] cart count ${before} -> ${after}; toast = ${toast}; login prompt = ${prompt}`);
+    const after  = await pdp.cartCount();
+    const toast  = await toastLocator.isVisible().catch(() => false);
+    const prompt = await pdp.loginPromptVisible();
+    const added  = after > before || toast;
+    console.log(`[CRT_002] cart count ${before} -> ${after}; toast = ${toast}; login prompt = ${prompt}`);
 
-  if (after > before || toast) {
-    expect(after > before || toast).toBe(true);
-  } else if (prompt) {
-    console.warn('[CRT_002 finding] Even logged-in (stubbed), Add to Cart still prompts login — cart-add needs a real backend session, not just a faked SPA session.');
-  } else {
-    console.warn('[CRT_002 finding] Logged-in: no login prompt, but no cart-count increment / confirmation detected — the cart-add API likely 401s without a real session, or opens a drawer not matched here.');
+    // The SPA-only auth stub cannot complete a real backend cart-add. If it neither
+    // added nor confirmed (and didn't even prompt login), the stub simply could not
+    // exercise the flow (DEFECT-8) — skip rather than red, since we cannot tell a
+    // stub limitation apart from a genuinely broken add without a real session.
+    test.skip(prompt, 'SPA-only auth stub prompted login instead of adding — needs a real backend session (DEFECT-8).');
+    test.skip(!added, 'SPA-only auth stub could not complete the cart-add (no increment/confirmation) — needs a real backend session (DEFECT-8).');
+    expect(added, 'Add to Cart should increment the cart count or show a confirmation').toBe(true);
+  } finally {
+    await safeClose(context, page);
   }
 });
 
@@ -1550,29 +1578,28 @@ test('TC_PDP_CRT_011 | P1 | BIS Hallmark and IGI Certified badges displayed', as
 
 // ---------------------------------------------------------------------------
 
-test('TC_PDP_CRT_008 | P0 | Wishlist heart toggles state (logged in)', async ({ page, context }) => {
-  // Log in first (stubbed mobile+OTP) so the heart toggles instead of prompting
-  // login. Context-level stubs so the authed session reaches the PDP popup tab.
-  await installAuthStubsContext(context);
-  await loginViaOtp(page);
+test('TC_PDP_CRT_008 | P0 | Wishlist heart toggles state (logged in)', async ({ browser }) => {
+  // Logged-in (auto session stub) so the heart toggles instead of prompting login.
+  const { context, page } = await newAuthed(browser);
+  try {
+    const pdp = new PDPPage(page);
+    await pdp.selectProductFromPlp(0);
+    await expect(pdp.wishlistIcon).toBeVisible();
 
-  const pdp = new PDPPage(page);
-  await pdp.selectProductFromPlp(0);
-  await expect(pdp.wishlistIcon).toBeVisible();
+    const before = (await pdp.wishlistIcon.getAttribute('class')) ?? '';
+    await pdp.clickWishlist();
 
-  const before = (await pdp.wishlistIcon.getAttribute('class')) ?? '';
-  await pdp.clickWishlist();
+    const prompt = await pdp.loginPromptVisible();
+    const after  = (await pdp.wishlistIcon.getAttribute('class').catch(() => before)) ?? before;
+    console.log(`[CRT_008] logged-in; class "${before}" -> "${after}"; login prompt = ${prompt}`);
 
-  const prompt = await pdp.loginPromptVisible();
-  const after  = (await pdp.wishlistIcon.getAttribute('class').catch(() => before)) ?? before;
-  console.log(`[CRT_008] logged-in; class "${before}" -> "${after}"; login prompt = ${prompt}`);
-
-  if (prompt) {
-    console.warn('[CRT_008 finding] Even logged-in (stubbed), wishlist still prompts login — toggle likely needs a real backend session, not just a faked SPA session.');
-  } else {
-    // Logged in: clicking the heart should not prompt login; class should change
-    // toward an active/filled state (or back).
+    // The SPA-only auth stub can fall back to a login prompt; that is a test-infra
+    // limitation (DEFECT-8), so skip rather than pass silently.
+    test.skip(prompt, 'SPA-only auth stub still prompts login for wishlist — needs a real backend session (DEFECT-8).');
+    // Logged in: clicking the heart should not prompt login.
     expect(prompt, 'logged-in wishlist click should not prompt login').toBe(false);
+  } finally {
+    await safeClose(context, page);
   }
 });
 
@@ -1772,35 +1799,37 @@ test('TC_PDP_CRT_009 | P0 | Wishlist prompts login for guest user', async ({ pag
 
 // ---------------------------------------------------------------------------
 
-test('TC_PDP_CRT_017 | P1 | Request Callback functionality from PDP', async ({ page, context }) => {
-  await installAuthStubsContext(context);
-  await loginViaOtp(page);
+test('TC_PDP_CRT_017 | P1 | Request Callback functionality from PDP', async ({ browser }) => {
+  const { context, page } = await newAuthed(browser);
+  try {
+    const pdp = new PDPPage(page);
+    await pdp.selectProductFromPlp(0);
+    await pdp.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 
-  const pdp = new PDPPage(page);
-  await pdp.selectProductFromPlp(0);
-  await pdp.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const callbackTrigger = pdp.page
+      .getByText(/request callback|schedule call|call back/i)
+      .first();
 
-  const callbackTrigger = pdp.page
-    .getByText(/request callback|schedule call|call back/i)
-    .first();
+    const present = await callbackTrigger.isVisible({ timeout: 5000 }).catch(() => false);
+    if (!present) {
+      console.warn('[CRT_017 finding] No "Request Callback" CTA found on the PDP — may be absent from this product type or require a different scroll depth.');
+      test.skip(true, 'Request Callback CTA not present.');
+      return;
+    }
 
-  const present = await callbackTrigger.isVisible({ timeout: 5000 }).catch(() => false);
-  if (!present) {
-    console.warn('[CRT_017 finding] No "Request Callback" CTA found on the PDP — may be absent from this product type or require a different scroll depth.');
-    test.skip(true, 'Request Callback CTA not present.');
-    return;
+    await callbackTrigger.click();
+    await pdp.page.waitForLoadState('domcontentloaded').catch(() => {});
+    await pdp.page.waitForTimeout(1200);
+
+    // The callback CTA routes to the dedicated /form/callback page (or opens a
+    // modal/form). Accept either: a callback URL, or a visible callback form/heading.
+    const onCallback = /callback|call-back|request.*call/i.test(pdp.page.url());
+    const formVisible = await pdp.page.locator('[class*="callback"], .form, form, input[type="tel"], .nitrozen-custom-form').first().isVisible().catch(() => false);
+    console.log(`[CRT_017] url = ${pdp.page.url()}; callback page/form reached = ${onCallback || formVisible}`);
+    expect(onCallback || formVisible, 'Request Callback should open the callback page/form').toBe(true);
+  } finally {
+    await safeClose(context, page);
   }
-
-  await callbackTrigger.click();
-  await pdp.page.waitForLoadState('domcontentloaded').catch(() => {});
-  await pdp.page.waitForTimeout(1200);
-
-  // The callback CTA routes to the dedicated /form/callback page (or opens a
-  // modal/form). Accept either: a callback URL, or a visible callback form/heading.
-  const onCallback = /callback|call-back|request.*call/i.test(pdp.page.url());
-  const formVisible = await pdp.page.locator('[class*="callback"], .form, form, input[type="tel"], .nitrozen-custom-form').first().isVisible().catch(() => false);
-  console.log(`[CRT_017] url = ${pdp.page.url()}; callback page/form reached = ${onCallback || formVisible}`);
-  expect(onCallback || formVisible, 'Request Callback should open the callback page/form').toBe(true);
 });
 
 // ---------------------------------------------------------------------------
@@ -1930,6 +1959,9 @@ test('TC_PDP_DTL_014 | P1 | Price Breakup table columns + rows', async ({ page }
 // ---------------------------------------------------------------------------
 
 test('TC_PDP_DTL_015 | P0 | Price Breakup Grand Total vs displayed price', async ({ page }) => {
+  // KNOWN DEFECT-1 (empty price breakup): the Grand Total / Selling Price row
+  // renders blank. Asserted per PRD, expected-to-fail; alerts when populated.
+  test.fail(true, 'Empty price breakup (DEFECT-1): Grand Total / Selling Price row has no numeric value.');
   const pdp = new PDPPage(page);
   await pdp.selectProductFromPlp(0);
   const price = await pdp.markedPriceText().catch(() => '');
@@ -1938,38 +1970,42 @@ test('TC_PDP_DTL_015 | P0 | Price Breakup Grand Total vs displayed price', async
   const grand = (await pdp.priceBreakupRowText('Selling Price').catch(() => '')) ||
                 (await pdp.priceBreakupRowText('Grand Total').catch(() => ''));
   console.log(`[DTL_015] displayed price = "${price}"; grand/selling row = "${grand}"`);
-  if (!parseRupees(grand).length) {
-    console.warn('[DTL_015 finding] Grand Total / Selling Price has no numeric value — cannot reconcile with displayed price (empty breakup, DEFECT-1).');
-  }
+  expect(parseRupees(price).length, 'displayed price should be numeric').toBeGreaterThan(0);
+  expect(parseRupees(grand).length, 'Grand Total / Selling Price row should carry a numeric value').toBeGreaterThan(0);
 });
 
 // ---------------------------------------------------------------------------
 
 test('TC_PDP_DTL_016 | P1 | Price Breakup updates on variant change', async ({ page }) => {
+  // KNOWN DEFECT-1 (empty price breakup): the MRP row is blank, so a refresh on
+  // variant change cannot be observed. Asserted per PRD, expected-to-fail.
+  test.fail(true, 'Empty price breakup (DEFECT-1): MRP row is blank, so a variant-change refresh cannot be confirmed.');
   const pdp = new PDPPage(page);
   const found = await pdp.selectVariantProduct();
-  if (!found.found) { console.warn('[DTL_016] No variant product — skipping.'); return; }
+  test.skip(!found.found, 'No variant product available to test breakup refresh.');
 
   await pdp.expandPriceBreakup();
   const before = await pdp.priceBreakupRowText('MRP').catch(() => '');
   const purity = found.labels.find(l => l.includes('METAL PURITY'));
-  if (purity) {
-    const opts = await pdp.variantOptionLabels(purity);
-    if (opts.length > 1) {
-      const cur = await pdp.variantValue(purity);
-      await pdp.selectVariantOption(purity, opts.find(o => o !== cur) || opts[1]);
-    }
-  }
+  test.skip(!purity, 'Selected variant product has no Metal Purity dropdown.');
+  const opts = await pdp.variantOptionLabels(purity);
+  test.skip(opts.length < 2, 'Metal Purity has only a single option — no variant change possible.');
+  const cur = await pdp.variantValue(purity);
+  const chosen = opts.find(o => o !== cur) || opts[1];
+  await pdp.selectVariantOption(purity, chosen);
+  await expect.poll(() => pdp.variantValue(purity), { timeout: 5000 }).toBe(chosen);
+
   const after = await pdp.priceBreakupRowText('MRP').catch(() => '');
   console.log(`[DTL_016] MRP row before="${before}" after="${after}"`);
-  if (!/\d/.test(before) && !/\d/.test(after)) {
-    console.warn('[DTL_016 finding] Breakup values blank before & after variant change — cannot confirm refresh (DEFECT-1).');
-  }
+  expect(/\d/.test(after), `breakup MRP should be populated after variant change, got "${after}"`).toBe(true);
 });
 
 // ---------------------------------------------------------------------------
 
 test('TC_PDP_DTL_019 | P1 | Price Breakup GST is 3% of subtotal', async ({ page }) => {
+  // KNOWN DEFECT-1 (empty price breakup): the GST row renders blank, so the 3%
+  // calculation cannot be verified. Asserted per PRD, expected-to-fail.
+  test.fail(true, 'Empty price breakup (DEFECT-1): GST row has no numeric value to verify the 3% rule.');
   const pdp = new PDPPage(page);
   await pdp.selectProductFromPlp(0);
   await pdp.expandPriceBreakup();
@@ -1977,9 +2013,13 @@ test('TC_PDP_DTL_019 | P1 | Price Breakup GST is 3% of subtotal', async ({ page 
   const gst = await pdp.priceBreakupRowText('GST').catch(() => '');
   const sub = await pdp.priceBreakupRowText('Sub Total').catch(() => '') || await pdp.priceBreakupRowText('MRP').catch(() => '');
   console.log(`[DTL_019] GST row = "${gst}"; subtotal row = "${sub}"`);
-  if (!parseRupees(gst).length) {
-    console.warn('[DTL_019 finding] GST row has no numeric value — cannot verify the 3% calculation (empty breakup, DEFECT-1).');
-  }
+
+  const gstNums = parseRupees(gst);
+  const subNums = parseRupees(sub);
+  expect(gstNums.length, 'GST row should carry a numeric value').toBeGreaterThan(0);
+  expect(subNums.length, 'Subtotal / MRP row should carry a numeric value').toBeGreaterThan(0);
+  // PRD: GST should be ~3% of the subtotal.
+  expect(gstNums[0] / subNums[0], `GST (${gstNums[0]}) should be ~3% of subtotal (${subNums[0]})`).toBeCloseTo(0.03, 2);
 });
 
 // ---------------------------------------------------------------------------
@@ -2624,41 +2664,52 @@ test('TC_PDP_HDR_005 | P1 | Logo click navigates to homepage', async ({ page }) 
 
 // ---------------------------------------------------------------------------
 
-test('TC_PDP_HDR_006 | P0 | Cart icon count after Add to Cart', async ({ page, context }) => {
-  await installAuthStubsContext(context);
-  await loginViaOtp(page);
-  const pdp = new PDPPage(page);
-  await pdp.selectProductFromPlp(0);
-  if (await pdp.isOutOfStock()) { test.skip(true, 'OOS'); return; }
+test('TC_PDP_HDR_006 | P0 | Cart icon count after Add to Cart', async ({ browser }) => {
+  const { context, page } = await newAuthed(browser);
+  try {
+    const pdp = new PDPPage(page);
+    await pdp.selectProductFromPlp(0);
+    if (await pdp.isOutOfStock()) { test.skip(true, 'OOS'); return; }
 
-  const before = await pdp.cartCount();
-  await pdp.addToCartBtn.click({ timeout: 10_000 }).catch(() => {});
-  await pdp.page.waitForTimeout(1500);
-  const after = await pdp.cartCount();
-  console.log(`[HDR_006] cart count ${before} -> ${after}`);
-  if (after > before) {
-    expect(after).toBeGreaterThan(before);
-  } else {
-    console.warn('[HDR_006 finding] Cart count did not increment — add-to-cart needs a real backend session (stubbed login fakes SPA session only; see DEFECT-8).');
+    const before = await pdp.cartCount();
+    await pdp.addToCartBtn.click({ timeout: 10_000 }).catch(() => {});
+    // Wait for the count to update rather than sleeping a fixed time.
+    await expect.poll(() => pdp.cartCount(), { timeout: 8000 }).toBeGreaterThan(before).catch(() => {});
+    const after = await pdp.cartCount();
+    const prompt = await pdp.loginPromptVisible();
+    console.log(`[HDR_006] cart count ${before} -> ${after}; login prompt = ${prompt}`);
+
+    // The SPA-only auth stub cannot complete a real backend cart-add. If it neither
+    // incremented nor prompted login, the stub could not exercise the flow (DEFECT-8)
+    // — skip rather than red (a stub limit is indistinguishable from a broken add
+    // without a real session).
+    test.skip(prompt, 'SPA-only auth stub prompted login instead of adding — needs a real backend session (DEFECT-8).');
+    test.skip(after <= before, 'SPA-only auth stub could not increment the cart — needs a real backend session (DEFECT-8).');
+    expect(after, 'cart icon count should increment after Add to Cart').toBeGreaterThan(before);
+  } finally {
+    await safeClose(context, page);
   }
 });
 
 // ---------------------------------------------------------------------------
 
-test('TC_PDP_HDR_007 | P1 | Header wishlist icon → wishlist page (logged in)', async ({ page, context }) => {
-  await installAuthStubsContext(context);
-  await loginViaOtp(page);
-  const pdp = new PDPPage(page);
-  await pdp.selectProductFromPlp(0);
+test('TC_PDP_HDR_007 | P1 | Header wishlist icon → wishlist page (logged in)', async ({ browser }) => {
+  const { context, page } = await newAuthed(browser);
+  try {
+    const pdp = new PDPPage(page);
+    await pdp.selectProductFromPlp(0);
 
-  // Click the header wishlist icon and see if it routes to a wishlist page.
-  await pdp.wishlistIcon.click().catch(() => {});
-  await pdp.page.waitForTimeout(1200);
-  const onWishlist = /wishlist|wish-list|favourite/i.test(pdp.page.url()) ||
-                     await pdp.page.getByText(/my wishlist|wishlist/i).first().isVisible().catch(() => false);
-  console.log(`[HDR_007] url = ${pdp.page.url()}; on wishlist = ${onWishlist}`);
-  if (!onWishlist) {
-    console.warn('[HDR_007 finding] Header wishlist click did not clearly route to a wishlist page (may need a real session, or the PDP heart is a product-wishlist toggle rather than the header nav icon).');
+    // Click the header wishlist icon and see if it routes to a wishlist page.
+    await pdp.wishlistIcon.click().catch(() => {});
+    await pdp.page.waitForTimeout(1200);
+    const onWishlist = /wishlist|wish-list|favourite/i.test(pdp.page.url()) ||
+                       await pdp.page.getByText(/my wishlist|wishlist/i).first().isVisible().catch(() => false);
+    console.log(`[HDR_007] url = ${pdp.page.url()}; on wishlist = ${onWishlist}`);
+    if (!onWishlist) {
+      console.warn('[HDR_007 finding] Header wishlist click did not clearly route to a wishlist page (the PDP heart may be a product-wishlist toggle rather than the header nav icon).');
+    }
+  } finally {
+    await safeClose(context, page);
   }
 });
 
@@ -2841,6 +2892,22 @@ async function newMobile(browser, extra = {}) {
 }
 
 /**
+ * Desktop context that is already logged in via a context-level session stub —
+ * NO OTP, NO login UI, nothing to type. The SPA reads `/session` as authenticated
+ * from first load (verified on the live site). Reused by every authed test.
+ */
+async function newAuthed(browser, extra = {}) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    ignoreHTTPSErrors: true,
+    ...extra,
+  });
+  await installAuthedSessionContext(context);
+  const page = await context.newPage();
+  return { context, page };
+}
+
+/**
  * Tear down a mobile context without letting teardown hang the test. On this
  * storefront, context.close() can block (leftover service worker / open
  * overlay / in-flight maps-geo request) long enough to trip the test timeout —
@@ -2858,6 +2925,32 @@ async function safeClose(context, page) {
     })(),
     new Promise(res => setTimeout(res, 6000)),
   ]);
+}
+
+/**
+ * Locate a position:fixed/sticky bottom bar that carries a primary CTA after the
+ * page has scrolled. Returns the trimmed CTA text, or null if no such bar exists.
+ * Shared by MOB_006 and MOB_014 (which previously inlined this verbatim).
+ */
+function findStickyBottomCta(page) {
+  return page.evaluate(() => {
+    const vh = window.innerHeight;
+    const els = Array.from(document.querySelectorAll('body *')).filter(e => {
+      const cs = getComputedStyle(e);
+      if (!/fixed|sticky/.test(cs.position)) return false;
+      const r = e.getBoundingClientRect();
+      return r.height > 20 && r.width > 100 && r.bottom <= vh + 4 && r.top > vh * 0.4;
+    });
+    // Among sticky elements that carry the CTA, pick the largest (the full bar
+    // container) so its text includes the product name/price if they are present.
+    const withCta = els.filter(e => /add to cart|book appointment|buy now|out of stock/i.test(e.textContent || ''));
+    if (!withCta.length) return null;
+    const bar = withCta.reduce((a, b) => {
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      return (rb.width * rb.height) > (ra.width * ra.height) ? b : a;
+    });
+    return (bar.textContent || '').replace(/\s+/g, ' ').trim();
+  });
 }
 
 test('TC_PDP_MOB_001 | P0 | mWeb PDP layout with swipe image carousel', async ({ browser }) => {
@@ -3005,27 +3098,12 @@ test('TC_PDP_MOB_006 | P0 | Sticky bottom action bar appears on scroll (mobile)'
     await pdp.selectProductFromPlp(0);
 
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight * 0.6));
-    await page.waitForTimeout(1200);
 
-    // Look for a position:fixed/sticky element at the bottom that carries a CTA.
-    const sticky = await page.evaluate(() => {
-      const vh = window.innerHeight;
-      const els = Array.from(document.querySelectorAll('body *')).filter(e => {
-        const cs = getComputedStyle(e);
-        if (!/fixed|sticky/.test(cs.position)) return false;
-        const r = e.getBoundingClientRect();
-        return r.height > 20 && r.width > 100 && r.bottom <= vh + 4 && r.top > vh * 0.4;
-      });
-      const cta = els.find(e => /add to cart|book appointment|buy now|out of stock/i.test(e.textContent || ''));
-      return cta ? { class: cta.className, text: (cta.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) } : null;
-    });
+    // A position:fixed/sticky bottom bar carrying the primary CTA must appear (P0).
+    const sticky = await findStickyBottomCta(page);
     console.log('[MOB_006] sticky CTA bar =', JSON.stringify(sticky));
-
-    if (!sticky) {
-      console.warn('[MOB_006 finding] No fixed/sticky bottom CTA bar with Add to Cart/Book Appointment detected after scroll on this product. Verify whether mWeb is expected to pin the primary CTA.');
-    } else {
-      expect(sticky.text).toMatch(/add to cart|book appointment|buy now|out of stock/i);
-    }
+    expect(sticky, 'a fixed/sticky bottom CTA bar (Add to Cart / Book Appointment) should appear after scrolling on mobile PDP').not.toBeNull();
+    expect(sticky).toMatch(/add to cart|book appointment|buy now|out of stock/i);
   } finally {
     await safeClose(context, page);
   }
@@ -3153,6 +3231,11 @@ test('TC_PDP_MOB_013 | P1 | Collapsible accordions for product sections (mobile)
 });
 
 test('TC_PDP_MOB_014 | P1 | Sticky bar shows product name, price & CTA after scroll', async ({ browser }) => {
+  // KNOWN DEFECT (confirmed on staging): the mobile sticky bottom bar shows ONLY
+  // the CTAs ("Buy Now / Add to cart") — no product name or price, contrary to
+  // spec. Asserted per spec, expected-to-fail; alerts when name+price are added.
+  // (The CTA bar's presence is the P0 requirement and is covered by MOB_006.)
+  test.fail(true, 'Mobile sticky bar omits the product name and price — only the CTAs are shown.');
   const { context, page } = await newMobile(browser);
   try {
     const pdp = new PDPPage(page);
@@ -3160,29 +3243,15 @@ test('TC_PDP_MOB_014 | P1 | Sticky bar shows product name, price & CTA after scr
     const name = (await pdp.productName.innerText().catch(() => '')).trim();
 
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight * 0.6));
-    await page.waitForTimeout(1200);
 
-    const bar = await page.evaluate(() => {
-      const vh = window.innerHeight;
-      const els = Array.from(document.querySelectorAll('body *')).filter(e => {
-        const cs = getComputedStyle(e);
-        if (!/fixed|sticky/.test(cs.position)) return false;
-        const r = e.getBoundingClientRect();
-        return r.height > 20 && r.width > 100 && r.bottom <= vh + 4 && r.top > vh * 0.4;
-      });
-      const cta = els.find(e => /add to cart|book appointment|buy now|out of stock/i.test(e.textContent || ''));
-      return cta ? (cta.textContent || '').replace(/\s+/g, ' ').trim() : null;
-    });
+    const bar = await findStickyBottomCta(page);
     console.log(`[MOB_014] sticky-bar content = ${JSON.stringify(bar)}`);
 
-    if (!bar) {
-      console.warn('[MOB_014 finding] No sticky bottom bar (product name + price + CTA) detected after scroll — same finding as MOB_006.');
-    } else {
-      const hasPrice = /₹|\d/.test(bar);
-      const hasName  = name && bar.toLowerCase().includes(name.toLowerCase().slice(0, 8));
-      console.log(`[MOB_014] sticky has price=${hasPrice}, has name=${!!hasName}`);
-      expect(bar).toMatch(/add to cart|book appointment|buy now|out of stock/i);
-    }
+    expect(bar, 'a sticky bottom bar (product name + price + CTA) should appear after scroll on mobile PDP').not.toBeNull();
+    expect(bar).toMatch(/add to cart|book appointment|buy now|out of stock/i);
+    expect(/₹|\d/.test(bar), 'sticky bar should display a price').toBe(true);
+    expect(name.length, 'product name should be readable on the PDP').toBeGreaterThan(0);
+    expect(bar.toLowerCase(), 'sticky bar should include the product name').toContain(name.toLowerCase().slice(0, 8));
   } finally {
     await safeClose(context, page);
   }
