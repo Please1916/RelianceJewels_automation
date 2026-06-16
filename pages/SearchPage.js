@@ -23,11 +23,31 @@ export class SearchPage {
     await this.box.waitFor({ state: 'visible', timeout: 30000 });
   }
 
-  /** Type a query and wait for the type-ahead to react (no submit). */
-  async typeAhead(query) {
+  /**
+   * Type a query and wait for the type-ahead to actually react (no submit).
+   * Polls until suggestions render (the UAT host's latency varies, so a fixed
+   * wait is flaky). Returns the latency in ms from keystroke to first suggestion.
+   *
+   * @param {object} [opts]
+   * @param {number} [opts.timeout=10000]      max time to wait for suggestions
+   * @param {boolean} [opts.requireProducts]   wait specifically for product items
+   *                                           (not just the category section)
+   */
+  async typeAhead(query, { timeout = 10_000, requireProducts = false } = {}) {
     await this.box.click();
-    await this.box.fill(query);
-    await this.page.waitForTimeout(1800);
+    await this.box.fill(''); // clear any prior value
+    const t0 = Date.now();
+    // Real per-character keystrokes (keydown/input/keyup) reliably trigger the
+    // type-ahead's debounced fetch — a single fill() sometimes does not.
+    await this.box.pressSequentially(query, { delay: 70 });
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const products = await this.productSuggestions.count();
+      const cat = await this.categorySection.first().isVisible().catch(() => false);
+      if (requireProducts ? products > 0 : products > 0 || cat) break;
+      await this.page.waitForTimeout(150);
+    }
+    return Date.now() - t0;
   }
 
   /** Type a query and submit it; lands on the results page. */

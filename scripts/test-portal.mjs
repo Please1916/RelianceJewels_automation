@@ -5,13 +5,13 @@ import { stdin as input, stdout as output } from 'node:process';
 import { spawnSync } from 'node:child_process';
 
 const suites = [
-  { key: 'plp', label: 'PLP — Product Listing Page', spec: 'plp-p0',
+  { key: 'plp', label: 'PLP — Product Listing Page', spec: 'plp',
     aliases: ['plp', 'product', 'products', 'listing', '/products'] },
-  { key: 'clp', label: 'CLP — Collection Listing Page', spec: 'clp-p0',
+  { key: 'clp', label: 'CLP — Collection Listing Page', spec: 'clp',
     aliases: ['clp', 'collection', 'collections', '/collection'] },
-  { key: 'search', label: 'Search', spec: 'search-p0',
+  { key: 'search', label: 'Search', spec: 'search',
     aliases: ['search', 'src', 'find', 'query', '/search'] },
-  { key: 'all', label: 'All P0 suites (PLP + CLP + Search)', spec: 'plp-p0 clp-p0 search-p0',
+  { key: 'all', label: 'All suites (PLP + CLP + Search)', spec: 'plp clp search',
     aliases: ['all', 'everything', 'full', 'a'] },
 ];
 

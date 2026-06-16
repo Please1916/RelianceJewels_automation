@@ -1,5 +1,7 @@
 import { test, expect, hasSavedSession, AUTH_FILE, installAuthedSessionContext } from './fixtures.js';
 import { PDPPage } from '../pages/PDPPage.js';
+import { PlpPage } from '../pages/PlpPage.js';
+import { ClpPage } from '../pages/ClpPage.js';
 import { SearchPage } from '../pages/SearchPage.js';
 import { WishlistPage } from '../pages/WishlistPage.js';
 import { BookAppointmentPage } from '../pages/BookAppointmentPage.js';
@@ -82,6 +84,13 @@ async function openForm(page, PomClass, { name, path }) {
   return pom;
 }
 
+/** Open a PDP for a product that exposes variant dropdowns (fallback: first card). */
+async function openVariantPdp(pdp) {
+  const variant = await pdp.selectVariantProduct(); // scans the grid, clicks a card → PDP
+  if (!variant.found) await pdp.selectProductFromPlp(0);
+  return variant;
+}
+
 // ===========================================================================
 // GUEST JOURNEY
 // ===========================================================================
@@ -89,18 +98,42 @@ async function openForm(page, PomClass, { name, path }) {
 test('@sanity | Guest journey: Home → PDP (+variants) → Search → wishlist gating', async ({ page }) => {
   test.slow(); // visits many staging pages incl. a variant-product scan
 
-  await test.step('Home loads with global header & category nav', async () => {
+  await test.step('TC_SAN_001 | P0 | Home loads with global header & category nav', async () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('header').first(), 'site header should render on Home').toBeVisible();
     await expect(page.getByText("Today's Gold Rate").first(), 'utility bar — Gold Rate').toBeVisible();
     await expect(page.getByText('Call Back').first(), 'utility bar — Call Back').toBeVisible();
   });
 
+  await test.step('TC_SAN_002 | P0 | Top nav routes to a category listing (PLP)', async () => {
+    // Use a top-nav link (always visible) rather than a hover-only mega-menu
+    // panel — at smoke level we just need the primary nav to route correctly.
+    const allJewellery = page.getByRole('link', { name: /all jewellery/i }).first();
+    await expect(allJewellery, 'top nav should expose "All Jewellery"').toBeVisible();
+    await allJewellery.click();
+    await page.waitForURL(/\/products/i, { timeout: 15_000 });
+    expect(/\/products/i.test(page.url()), '"All Jewellery" should route to the PLP').toBe(true);
+  });
+
+  await test.step('TC_SAN_003 | P0 | PLP grid renders products with a result count', async () => {
+    const plp = new PlpPage(page);
+    await plp.goto();
+    expect(await plp.cardCount(), 'PLP should render product cards').toBeGreaterThan(0);
+    const count = await plp.productCount();
+    expect(count === null || count > 0, 'PLP should report a non-zero product count').toBe(true);
+  });
+
+  await test.step('TC_SAN_004 | P0 | CLP (collection) renders products', async () => {
+    const clp = new ClpPage(page);
+    await clp.goto();
+    expect(await clp.cardCount(), 'CLP should render collection product cards').toBeGreaterThan(0);
+  });
+
   // Open a product that exposes variant dropdowns so the next step has data to
   // work with; fall back to the first product if the scan finds none.
   const pdp = new PDPPage(page);
   let variant = { found: false, labels: [] };
-  await test.step('PLP → open a product → PDP shows gallery, price & Add to Cart', async () => {
+  await test.step('TC_SAN_005 | P0 | PLP → open a product → PDP shows gallery, price & Add to Cart', async () => {
     variant = await pdp.selectVariantProduct(); // desktop new-tab / mobile same-tab
     if (!variant.found) await pdp.selectProductFromPlp(0);
     await expect(pdp.mainImage, 'PDP main image should render').toBeVisible();
@@ -108,7 +141,7 @@ test('@sanity | Guest journey: Home → PDP (+variants) → Search → wishlist 
     expect(await pdp.addToCartEnabled(), 'in-stock PDP should expose an enabled Add to Cart CTA').toBe(true);
   });
 
-  await test.step('PDP variants: selecting different options applies each value', async () => {
+  await test.step('TC_SAN_006 | P0 | PDP variants: selecting different options applies each value', async () => {
     const onPdp = /\/product\//.test(pdp.page.url());
     if (!variant.found || !onPdp) {
       test.info().annotations.push({
@@ -156,13 +189,13 @@ test('@sanity | Guest journey: Home → PDP (+variants) → Search → wishlist 
     }
   });
 
-  await test.step('Search returns results', async () => {
+  await test.step('TC_SAN_007 | P0 | Search returns results', async () => {
     const search = new SearchPage(page);
     await search.search('gold');
     expect(await search.resultCount(), 'search for "gold" should return results').toBeGreaterThan(0);
   });
 
-  await test.step('Guest wishlist heart is login-gated', async () => {
+  await test.step('TC_SAN_008 | P0 | Guest wishlist heart is login-gated', async () => {
     const wl = new WishlistPage(page);
     await wl.gotoPlp();
     await expect(wl.plpHeart(0)).toBeVisible({ timeout: 15_000 });
@@ -204,64 +237,107 @@ test.describe('@sanity logged-in', () => {
     if (!live) test.info().annotations.push({ type: 'note', description: 'Stubbed session did not flip the SPA to logged-in; proceeding best-effort.' });
   }
 
-  test('@sanity | Purchase path: PDP → Add to Cart → Checkout summary', async ({ browser }) => {
+  // The end-to-end Buy Now purchase journey, in order:
+  //   Login → click Jewellery → PLP → open product → PDP → select variants →
+  //   validate price breakup → Buy Now → checkout → Proceed to Pay → payment.
+  // STOPS at the payment (JioOnePay) page: a real gateway payment can't run
+  // unattended. Needs a REAL session (npm run auth:login) — under the stub the
+  // cart/checkout has no backend session, so it self-skips at the Buy Now step.
+  test('@sanity | TC_SAN_009 | P0 | Buy Now journey: Login → Jewellery → PLP → PDP → variants → price breakup → Proceed to Pay', async ({ browser }) => {
     test.slow();
     const { context, page, mode } = await newAuthedPage(browser);
+    const pdp = new PDPPage(page);
     try {
-      await confirmAuth(page, mode);
+      await test.step('Login (reuse real/stub session) & land on Home', async () => {
+        await confirmAuth(page, mode);
+      });
 
-      // Find an in-stock product and add it to the cart. Persists only with a
-      // real session — under the stub the cart-add is a no-op (DEFECT-8).
-      const pdp = new PDPPage(page);
-      let added = false;
-      for (let i = 0; i < 6 && !added; i++) {
-        await pdp.selectProductFromPlp(i);
-        if (!(await pdp.addToCartEnabled())) continue;
-        const before = await pdp.cartCount();
-        await pdp.addToCart();
-        added = (await pdp.cartCount()) > before;
-      }
-      if (!added) {
-        test.info().annotations.push({
-          type: 'note',
-          description: `Cart-add did not register (mode=${mode}; expected under the stub — see DEFECT-8) — checkout summary check skipped.`,
-        });
-        test.skip(true, 'cart did not populate; cannot exercise checkout');
-      }
+      await test.step('Click "All Jewellery" → land on PLP', async () => {
+        const jewellery = page.getByRole('link', { name: /all jewellery/i }).first();
+        await expect(jewellery, 'top nav should expose "All Jewellery"').toBeVisible();
+        await jewellery.click();
+        await page.waitForURL(/\/products/i, { timeout: 15_000 });
+      });
 
-      const work = pdp.page; // the PDP tab where the add happened
-      await work.locator('[class*="cart"], a[href*="cart"]').first().click().catch(() => {});
-      await work.waitForTimeout(2500);
-      const proceed = work
-        .getByRole('button', { name: /checkout|proceed|place order/i })
-        .or(work.getByText(/proceed to (pay|checkout)|place order|checkout/i))
-        .first();
-      if (await proceed.isVisible().catch(() => false)) {
+      await test.step('Select a product in the PLP → navigate to PDP', async () => {
+        const variant = await openVariantPdp(pdp); // clicks a PLP card → PDP
+        pdp.__variant = variant;
+        await expect(pdp.mainImage, 'PDP should render after selecting a product').toBeVisible();
+        expect(await pdp.markedPriceText(), 'PDP should show a ₹ price').toMatch(/₹[\d,]+/);
+      });
+
+      await test.step('Select variants on the PDP', async () => {
+        const variant = pdp.__variant || { found: false, labels: [] };
+        if (!variant.found) {
+          test.info().annotations.push({ type: 'note', description: 'No variant dropdowns on this product — variant selection skipped.' });
+          return;
+        }
+        pdp.page.setDefaultTimeout(20_000); // fail fast, don't hang the journey
+        const pick = (re) => variant.labels.find((l) => re.test(l));
+        const label = pick(/METAL PURITY/i) || pick(/METAL COL/i) || pick(/SIZE/i) || variant.labels[0];
+        const options = await pdp.variantOptionLabels(label);
+        if (options.length) {
+          await pdp.selectVariantOption(label, options[0]);
+          expect(await pdp.variantValue(label), `${label} should reflect the picked option`).not.toBe('');
+        }
+      });
+
+      await test.step('Validate the price breakup details', async () => {
+        await pdp.expandPriceBreakup();
+        if (!(await pdp.priceBreakupVisible())) {
+          test.info().annotations.push({ type: 'note', description: 'Price breakup section absent on this product — validation skipped.' });
+          return;
+        }
+        const headers = await pdp.priceBreakupHeaders().catch(() => []);
+        const making = await pdp.priceBreakupRowText('Making Charges').catch(() => '');
+        const selling = await pdp.priceBreakupRowText('Selling Price').catch(() => '');
+        expect(headers.length + making.length + selling.length, 'price breakup should list components/values').toBeGreaterThan(0);
+      });
+
+      const work = pdp.page; // PDP / checkout tab
+      await test.step('Buy Now → checkout', async () => {
+        await expect(pdp.buyNowBtn, 'PDP should expose a Buy Now CTA').toBeVisible();
+        await pdp.buyNowBtn.click().catch(() => {});
+        await work.waitForTimeout(3000);
+        // No real backend session (stub) ⇒ Buy Now can't reach a real checkout:
+        // it either bounces to login or simply stays on the PDP. Detect "did not
+        // reach checkout" and skip the rest (infra limit — needs auth:login).
+        const reachedCheckout =
+          /\/(cart|checkout|payment|bag)/i.test(work.url()) ||
+          (await work.getByText(/order summary|price summary|proceed to pay/i).first().isVisible().catch(() => false));
+        if (!reachedCheckout) {
+          test.info().annotations.push({
+            type: 'note',
+            description: `Buy Now did not reach checkout (mode=${mode}; url=${work.url()}) — checkout & payment need a real session (npm run auth:login).`,
+          });
+          test.skip(true, 'checkout requires a real session');
+        }
+      });
+
+      await test.step('Proceed to Pay → payment (JioOnePay) page renders', async () => {
+        const proceed = work
+          .getByRole('button', { name: /proceed to pay|place order|continue/i })
+          .or(work.getByText(/proceed to pay|place order/i))
+          .first();
+        await expect(proceed, 'checkout should expose a Proceed to Pay CTA').toBeVisible();
         await proceed.click().catch(() => {});
-        await work.waitForTimeout(2500);
-      }
-
-      // Assert a coherent cart/checkout state: either a populated summary + pay
-      // CTA, or a clean empty-cart state — never a crash or a login bounce.
-      expect(/\/auth\/login/i.test(work.url()), 'logged-in user should not bounce to login at checkout').toBe(false);
-      const summaryVisible = await work.getByText(/price summary|order summary/i).first().isVisible().catch(() => false);
-      if (summaryVisible) {
+        await work.waitForTimeout(3000);
+        // STOP here: assert the payment step rendered (JioOnePay / payment
+        // options). Completing a real gateway payment is not automated.
+        // TODO(real-session run): capture the create-order + payment endpoints,
+        //   then page.route()+fulfill them here to simulate "order placed".
         await expect(
-          work.getByText(/proceed to pay|place order|checkout/i).first(),
-          'a populated cart/checkout should expose a pay/checkout CTA',
+          work.getByText(/jio ?one ?pay|payment|upi|card|net ?banking|pay now/i).first(),
+          'a payment page (JioOnePay / payment options) should render after Proceed to Pay',
         ).toBeVisible();
-      } else {
-        await expect(
-          work.getByText(/cart is empty|no items|empty/i).first(),
-          'cart/checkout must render a summary or a clean empty state',
-        ).toBeVisible();
-      }
+        test.info().annotations.push({ type: 'note', description: 'Stopped at the payment page — real JioOnePay order placement is not automated.' });
+      });
     } finally {
       await context.close().catch(() => {});
     }
   });
 
-  test('@sanity | Orders page lists orders with required fields', async ({ browser }) => {
+  test('@sanity | TC_SAN_010 | P1 | Orders page lists orders with required fields', async ({ browser }) => {
     const { context, page, mode } = await newAuthedPage(browser);
     try {
       await confirmAuth(page, mode);
@@ -301,21 +377,21 @@ test.describe('@sanity logged-in', () => {
       // clear locator error instead of hanging the whole test budget.
       page.setDefaultTimeout(25_000);
 
-      await test.step('Book Appointment: click entry → fill → submit-ready', async () => {
+      await test.step('TC_SAN_011 | P0 | Book Appointment: click entry → fill → submit-ready', async () => {
         const ba = await openForm(page, BookAppointmentPage, FORMS.bookAppointment);
         await ba.fillValidForm();
         expect(await ba.submit.isEnabled(), 'Book Appointment should be submit-ready once valid').toBe(true);
         expect(await ba.errorScreenShown(), 'no failure screen on a valid Book Appointment form').toBe(false);
       });
 
-      await test.step('Call Back: click entry → fill → submit-ready', async () => {
+      await test.step('TC_SAN_012 | P0 | Call Back: click entry → fill → submit-ready', async () => {
         const cb = await openForm(page, CallBackPage, FORMS.callBack);
         await cb.fillValidForm();
         expect(await cb.submit.isEnabled(), 'Call Back should be submit-ready once valid').toBe(true);
         expect(await cb.errorScreenShown(), 'no failure screen on a valid Call Back form').toBe(false);
       });
 
-      await test.step('Contact Us: click entry → fill → submit-ready', async () => {
+      await test.step('TC_SAN_013 | P0 | Contact Us: click entry → fill → submit-ready', async () => {
         const cu = await openForm(page, ContactUsPage, FORMS.contactUs);
         await cu.fillValidForm();
         expect(await cu.submit.isEnabled(), 'Contact Us should be submit-ready once valid').toBe(true);

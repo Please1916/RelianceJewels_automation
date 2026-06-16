@@ -57,7 +57,9 @@ if (fs.existsSync(jsonPath)) {
     if (st !== 'skipped' && steps.length) {
       for (const s of steps) phases.push({ title: s.title, bucket: s.error ? 'fail' : 'pass', duration: s.duration || 0 });
     } else {
-      phases.push({ title: spec.title, bucket: statusBucket(st), duration: last?.duration || 0 });
+      // Strip the "@sanity | " report-match tag so the row reads "TC_SAN_NNN | …".
+      const title = spec.title.replace(/^@sanity\s*\|\s*/, '');
+      phases.push({ title, bucket: statusBucket(st), duration: last?.duration || 0 });
     }
     globalThis.__browserName = data.config?.projects?.[0]?.name;
   }
