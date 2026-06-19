@@ -165,6 +165,12 @@ export class NavPage {
     await this.logoutBtn.waitFor({ state: 'visible', timeout: 10_000 });
     // dispatchEvent fires the Vue click handler (force:true bypasses it).
     await this.logoutBtn.dispatchEvent('click');
+    // Clicking "Log out" opens a confirmation dialog — click the confirm button.
+    const confirmBtn = this.page.getByRole('button', { name: /^log.?out$/i });
+    await confirmBtn.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {});
+    if (await confirmBtn.isVisible().catch(() => false)) {
+      await confirmBtn.click();
+    }
     // Wait for the SPA to navigate away from /profile/
     await this.page.waitForURL(
       (url) => !url.toString().includes('/profile/'),
