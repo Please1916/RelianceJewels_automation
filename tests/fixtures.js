@@ -122,6 +122,32 @@ async function installAuthStubsContext(context) {
 }
 
 /**
+ * Pre-authenticated context stub: report the user as ALREADY logged in on every
+ * `/session` check, with NO OTP and NO login-UI flow. Verified on the live site
+ * to flip the SPA to its logged-in state instantly. Context-level so it also
+ * covers the PDP popup tab.
+ *
+ * NOTE: this fakes the *SPA* session only (no real backend session cookie), so
+ * actions that hit a real authed API (cart add, wishlist persistence) may still
+ * not persist server-side — see DEFECT-8. For those, mint a real session with
+ * `npm run auth:login` and use `authedPage` instead.
+ */
+async function installAuthedSessionContext(context) {
+  await context.route('**/user/authentication/v1.0/otp/mobile/verify**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ user: FAKE_USER, user_exists: true, verify_mobile_otp: true, register_token: null }),
+    }));
+  await context.route('**/user/authentication/v1.0/session**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ authenticated: true, user: FAKE_USER }),
+    }));
+}
+
+/**
  * Drive the real login UI: open login, enter mobile, request OTP, enter OTP.
  * Assumes auth stubs are already installed on the page.
  */
@@ -175,4 +201,4 @@ export const test = base.extend({
   },
 });
 
-export { expect, loginViaOtp, installAuthStubsContext };
+export { expect, loginViaOtp, installAuthStubsContext, installAuthedSessionContext };

@@ -44,6 +44,7 @@ if (!r.cfgFound) {
 const { moduleLabel, reportSpecs, sectionOrder, meta } = r;
 const { passed, failed: realFail, knownGap, manual, suiteTotal, scopeTotal, perfLighthouse } = r.counts;
 const fmtMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
+const imgDataUri = (p) => { try { return `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`; } catch { return null; } };
 
 // ---- Donut chart — pass / fail only (manual + known-gap excluded) ----
 const donutSegs = [
