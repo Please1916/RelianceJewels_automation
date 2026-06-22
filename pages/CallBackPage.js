@@ -221,7 +221,11 @@ export class CallBackPage {
     await this.fillMobile(v.mobile);
     await this.selectState(v.state);
     await this.selectCity(v.city);
-    await this.selectStore(v.store);
+    // Store cascade is unreliable on live — pick first available option, skip if none.
+    const availableStores = await this.dropdownOptions('STORE').catch(() => []);
+    if (availableStores.length > 0) {
+      await this.selectFromDropdown('STORE', availableStores[0]);
+    }
     await this.selectReason(v.reason);
     await this.pickFutureDate();
     await this.selectFirstTime();

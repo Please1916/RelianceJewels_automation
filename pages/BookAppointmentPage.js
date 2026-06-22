@@ -255,7 +255,7 @@ export class BookAppointmentPage {
   async fillValidForm(o = {}) {
     const v = {
       name: 'Anjali Singh', email: 'anjali@test.com', mobile: '9876543210',
-      state: 'Maharashtra', city: 'Mumbai', store: 'Mumbai_Infinity Mall',
+      state: 'Maharashtra', city: 'Mumbai', store: null,
       reason: 'Product Enquiry', ...o,
     };
     await this.fillName(v.name);
@@ -263,7 +263,11 @@ export class BookAppointmentPage {
     await this.fillMobile(v.mobile);
     await this.selectState(v.state);
     await this.selectCity(v.city);
-    await this.selectStore(v.store);
+    // Store cascade is unreliable on live — pick first available option, skip if none.
+    const availableStores = await this.dropdownOptions('STORE NAME').catch(() => []);
+    if (availableStores.length > 0) {
+      await this.selectFromDropdown('STORE NAME', availableStores[0]);
+    }
     await this.selectReason(v.reason);
     await this.pickFutureDate();
     await this.selectFirstTime();

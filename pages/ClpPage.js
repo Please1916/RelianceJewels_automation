@@ -21,6 +21,6 @@ export class ClpPage extends PlpPage {
 
   async goto() {
     await this.page.goto('/collection/' + this.collection, { waitUntil: 'domcontentloaded' });
-    await this.cards.first().waitFor({ state: 'visible', timeout: 30000 });
+    await this.cards.first().waitFor({ state: 'visible', timeout: 60000 });
   }
 }

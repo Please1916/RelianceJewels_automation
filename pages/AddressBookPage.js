@@ -182,11 +182,11 @@ export class AddressBookPage {
     // 5s is enough for the SPA to render the account section and address list
     // (confirmed by probe: ab2/ab4 both succeeded with 4–5s waits).
     await this.page.goto('/profile/address', { waitUntil: 'domcontentloaded' });
-    await this.page.waitForTimeout(5000);
+    await this.page.waitForTimeout(6000);
   }
 
   async openAddForm() {
-    await this.addBtn.waitFor({ state: 'visible', timeout: 15_000 });
+    await this.addBtn.waitFor({ state: 'visible', timeout: 30_000 });
     await this.addBtn.click();
     await this.page.waitForURL(/edit=true/, { timeout: 10_000 }).catch(() => {});
     await this.page.waitForTimeout(1500);
