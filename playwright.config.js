@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
+  globalSetup: './global-setup.mjs',
   testDir: './tests',
   timeout: 60 * 1000,
   expect: { timeout: 10 * 1000 },

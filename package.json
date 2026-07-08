@@ -12,12 +12,12 @@
     "test:clp": "playwright test clp",
     "test:pdp": "playwright test pdp",
     "test:search": "playwright test search",
-    "test:pdp": "playwright test pdp-P0,P1",
     "test:ab": "playwright test address-book",
     "test:policies": "playwright test policies",
     "test:nav": "playwright test nav",
     "test:homepage": "playwright test homepage --workers=1",
     "test:sanity": "playwright test sanity",
+    "test:pricing": "playwright test pricing",
     "test:headed": "playwright test plp clp search --headed",
     "test:ui": "playwright test --ui",
     "report": "node scripts/generate-report-pdf.mjs",
@@ -38,6 +38,8 @@
     "test:sanity-flow": "node scripts/run-sanity-flow.mjs",
     "report:sanity-flow": "node scripts/generate-sanity-flow-report.mjs",
     "test:report:sanity-flow": "npm run test:sanity-flow; npm run report:sanity-flow",
+    "report:pricing": "node scripts/generate-pricing-report.mjs",
+    "test:report:pricing": "npm run test:pricing; npm run report:pricing",
     "report:html": "playwright show-report",
     "test:report": "npm run test; npm run report",
     "test:report:pdp": "npm run test:pdp; npm run report:pdp",
@@ -51,5 +53,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0"
+  },
+  "dependencies": {
+    "pg": "^8.13.3"
   }
 }

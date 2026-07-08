@@ -13,6 +13,9 @@ playwright/.auth/
 # Generated reports (JSON source + PDF)
 report/
 
+# Pricing DB snapshot — regenerated each run from UAT DB
+fixtures/pricing-snapshot.json
+
 # OS / editor
 .DS_Store
 *.log

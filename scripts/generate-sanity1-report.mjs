@@ -1,7 +1,7 @@
 /**
  * Generates the branded Sanity1 P0 PDF report.
  *
- * sanity1.spec.js has 179 individual test() blocks in a serial describe.
+ * sanity1.spec.js has 213 individual test() blocks in a serial describe.
  * This script collects each spec's pass/fail/skip status from Playwright's
  * JSON results and renders them as a flat table grouped by section.
  *
@@ -479,7 +479,7 @@ const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
     <div class="brand-block">
       <div class="logo-pill"><img src="${cfg.logo}" alt="Reliance Jewels"/></div>
       <div class="brand-text">
-        <div class="brand-eyebrow">QA Automation Report</div>
+        <div class="brand-eyebrow">Sanity User Flow Report</div>
       </div>
     </div>
     <div class="run-meta">
@@ -537,7 +537,7 @@ const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
 
     <footer>
       <div class="left">
-        Reliance Jewels QA Automation &nbsp;·&nbsp; ${escapeHtml(cfg.specPath)}
+        Reliance Jewels Sanity User Flow Report &nbsp;·&nbsp; ${escapeHtml(cfg.specPath)}
         ${hasResults ? `&nbsp;·&nbsp; ${escapeHtml(cfg.resultsPath)}` : ''}
       </div>
       <div class="right">Reliance Jewels · QA</div>

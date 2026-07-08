@@ -160,7 +160,7 @@ const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
 </style></head><body>
   <header>
     <div class="meta"><div>Generated <b>${now}</b></div><div>Browser <b>${escapeHtml(browserName)}</b>${hasResults ? ` · ${totalDurationS}s` : ''}</div><div>Env <b>${escapeHtml(cfg.env)}</b></div></div>
-    <div class="brand"><img src="${cfg.logo}" alt="Reliance Jewels"/><span class="eyebrow">Reliance Jewels · QA Automation</span></div>
+    <div class="brand"><img src="${cfg.logo}" alt="Reliance Jewels"/><span class="eyebrow">Reliance Jewels · Sanity User Flow Report</span></div>
     <h1>${escapeHtml(cfg.title)}</h1>
     <div class="sub">${escapeHtml(cfg.subtitle)} · ${total} phases</div>
   </header>
@@ -182,7 +182,7 @@ const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
     <tbody>${rowsHtml}</tbody>
   </table>
 
-  <footer>Reliance Jewels QA Automation · catalog source: ${escapeHtml(cfg.specPath)}${hasResults ? ` + ${escapeHtml(cfg.resultsPath)}` : ' (no run results — phases shown as Automated)'} · regenerate with <code>npm run report:sanity</code></footer>
+  <footer>Reliance Jewels Sanity User Flow Report · catalog source: ${escapeHtml(cfg.specPath)}${hasResults ? ` + ${escapeHtml(cfg.resultsPath)}` : ' (no run results — phases shown as Automated)'} · regenerate with <code>npm run report:sanity</code></footer>
 </body></html>`;
 
 fs.writeFileSync(htmlPath, html);

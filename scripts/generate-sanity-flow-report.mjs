@@ -177,7 +177,7 @@ const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
 </style></head><body>
   <header>
     <div class="meta"><div>Generated <b>${now}</b></div><div>Browser <b>${escapeHtml(browserName)}</b> · ${totalDurationS}s</div><div>Env <b>${escapeHtml(cfg.env)}</b></div></div>
-    <div class="brand"><img src="${cfg.logo}" alt="Reliance Jewels"/><span class="eyebrow">Reliance Jewels · QA Automation</span></div>
+    <div class="brand"><img src="${cfg.logo}" alt="Reliance Jewels"/><span class="eyebrow">Reliance Jewels · Sanity User Flow Report</span></div>
     <h1>${escapeHtml(cfg.title)}</h1>
     <div class="sub">${escapeHtml(cfg.subtitle)} · ${total} cases</div>
   </header>
@@ -199,7 +199,7 @@ const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
     <tbody>${sectionsHtml}</tbody>
   </table>
 
-  <footer>Reliance Jewels QA Automation · Sanity Flow · catalog: ${escapeHtml(cfg.resultsPath)} · regenerate with <code>npm run report:sanity-flow</code></footer>
+  <footer>Reliance Jewels Sanity User Flow Report · Sanity Flow · catalog: ${escapeHtml(cfg.resultsPath)} · regenerate with <code>npm run report:sanity-flow</code></footer>
 </body></html>`;
 
 fs.writeFileSync(htmlPath, html);
